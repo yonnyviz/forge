@@ -45,7 +45,7 @@ Add this to your shell profile (`.bashrc`, `.zshrc`, etc.) to persist across ses
 
 ```bash
 # ~/.zshrc or ~/.bashrc
-export FORGE_INITIATIVES_DIR="$HOME/Documents/fujitsu/initiatives"
+export FORGE_INITIATIVES_DIR="$HOME/Documents/initiatives"
 ```
 
 Or set it inline before running Pi:
@@ -92,7 +92,7 @@ export FORGE_INITIATIVES_DIR="$HOME/Projects/work"
 pi
 
 # Or inline
-FORGE_INITIATIVES_DIR="$HOME/fujitsu/initiatives" pi
+FORGE_INITIATIVES_DIR="$HOME/initiatives" pi
 ```
 
 ## Usage
