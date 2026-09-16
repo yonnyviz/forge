@@ -1,18 +1,14 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { execSync } from "node:child_process";
-
-function expandPath(p: string): string {
-  if (p.startsWith("~")) {
-    return p.replace("~", process.env.HOME || "");
-  }
-  return p;
-}
-
-const INITIATIVES_DIR = expandPath(
-  process.env.FORGE_INITIATIVES_DIR || "~/Documents/initiatives"
-);
+import {
+  INITIATIVES_DIR,
+  createWorkSession,
+  ensureInitiativesDir,
+  getRecentSessions,
+  listInitiatives,
+  readJSON,
+} from "./initiative-store.js";
 
 interface InitiativeMetadata {
   name: string;
@@ -72,12 +68,6 @@ export default function (pi: ExtensionAPI) {
       }
     },
   });
-}
-
-function ensureInitiativesDir() {
-  if (!existsSync(INITIATIVES_DIR)) {
-    mkdirSync(INITIATIVES_DIR, { recursive: true });
-  }
 }
 
 function isValidKebabCase(name: string): boolean {
@@ -140,7 +130,7 @@ async function mainWorkflow(
 
   // Step 2: Show initiative summary
   const initPath = join(INITIATIVES_DIR, selectedInitiative.name);
-  const metadata = readJSON<InitiativeMetadata>(join(initPath, ".worklog", "metadata.json"));
+  const metadata = readJSON(join(initPath, ".forge", "metadata.json")) as InitiativeMetadata;
 
   ctx.ui.notify(
     `\n📂 ${metadata.displayName}\n   ${metadata.description}\n\n   Goal: ${metadata.goal}\n   Status: ${metadata.status} (${metadata.phase})\n   Sessions: ${metadata.sessionCount}`,
@@ -275,7 +265,7 @@ function createInitiativeFolders(
   metadata: InitiativeMetadata
 ) {
   // Create directories
-  mkdirSync(join(initPath, ".worklog"), { recursive: true });
+  mkdirSync(join(initPath, ".forge"), { recursive: true });
   mkdirSync(join(initPath, "sessions"), { recursive: true });
   mkdirSync(join(initPath, "planning", "milestones"), { recursive: true });
   mkdirSync(join(initPath, "docs"), { recursive: true });
@@ -283,12 +273,12 @@ function createInitiativeFolders(
 
   // Create metadata.json
   writeFileSync(
-    join(initPath, ".worklog", "metadata.json"),
+    join(initPath, ".forge", "metadata.json"),
     JSON.stringify(metadata, null, 2)
   );
 
   // Create empty sessions.log
-  writeFileSync(join(initPath, ".worklog", "sessions.log"), "");
+  writeFileSync(join(initPath, ".forge", "sessions.log"), "");
 
   // Create .claude.md template
   const claudeMd = generateClaudeMd(metadata);
@@ -360,7 +350,7 @@ function generateClaudeMd(metadata: InitiativeMetadata): string {
 - **Sessions:** \`sessions/YYYY-MM-DD_name/\` - Work logs & notes
 - **Documentation:** \`docs/\` - Specs, requirements, references
 - **Artifacts:** \`artifacts/\` - Code, scripts, data, deliverables
-- **Metadata:** \`.worklog/metadata.json\` - Status & tracking
+- **Metadata:** \`.forge/metadata.json\` - Status & tracking
 
 ---
 
@@ -450,48 +440,7 @@ async function createSessionFlow(
     pi.setSessionName(piSessionName);
   }
 
-  const sessionDate = new Date().toISOString().split("T")[0];
-  const sessionFolder = `${sessionDate}_${sessionName.replace(/\s+/g, "-").toLowerCase()}`;
-  const sessionPath = join(initPath, "sessions", sessionFolder);
-
-  mkdirSync(sessionPath, { recursive: true });
-
-  // Create session notes template
-  const notesTemplate = `# Session: ${sessionName}
-
-**Date:** ${sessionDate}
-**Milestone:** M# (if applicable)
-**Goal:** [Session goal]
-
-## What Was Done
-- [Accomplishment 1]
-
-## Architecture Decisions Made
-- [Any decisions]
-
-## Artifacts Created
-- None yet
-
-## Next Session
-- [ ] [Task 1]
-
-## Blockers/Questions
-- None
-`;
-
-  writeFileSync(join(sessionPath, "notes.md"), notesTemplate);
-
-  // Update metadata
-  metadata.lastSession = new Date().toISOString();
-  metadata.sessionCount += 1;
-  metadata.lastUpdated = new Date().toISOString();
-  writeFileSync(join(initPath, ".worklog", "metadata.json"), JSON.stringify(metadata, null, 2));
-
-  // Append to sessions.log
-  const logEntry = `${new Date().toISOString()} | ${sessionFolder} | Session created\n`;
-  execSync(
-    `echo '${logEntry}' >> '${join(initPath, ".worklog", "sessions.log")}'`
-  );
+  const { sessionFolder } = createWorkSession(initPath, metadata, sessionName);
 
   ctx.ui.notify(
     `✓ Session created: ${sessionFolder}\n\n📝 Start working!\nEdit: sessions/${sessionFolder}/notes.md`,
@@ -526,7 +475,7 @@ async function resumeSessionFlow(
   // Update metadata
   metadata.lastSession = new Date().toISOString();
   metadata.lastUpdated = new Date().toISOString();
-  writeFileSync(join(initPath, ".worklog", "metadata.json"), JSON.stringify(metadata, null, 2));
+  writeFileSync(join(initPath, ".forge", "metadata.json"), JSON.stringify(metadata, null, 2));
 
   ctx.ui.notify(
     `▶️ Resumed: ${sessionName}\n\n${notes.substring(0, 300)}...\n\nFull notes in: sessions/${sessionName}/notes.md`,
@@ -562,7 +511,7 @@ async function updateStatusFlow(
 
   // Update metadata
   metadata.lastUpdated = new Date().toISOString();
-  writeFileSync(join(initPath, ".worklog", "metadata.json"), JSON.stringify(metadata, null, 2));
+  writeFileSync(join(initPath, ".forge", "metadata.json"), JSON.stringify(metadata, null, 2));
 
   // Update .claude.md with new status and progress
   const claudePath = join(initPath, ".claude.md");
@@ -586,46 +535,4 @@ async function updateStatusFlow(
   writeFileSync(claudePath, claudeContent);
 
   ctx.ui.notify(`✓ Initiative updated`, "success");
-}
-
-function listInitiatives(): InitiativeMetadata[] {
-  if (!existsSync(INITIATIVES_DIR)) return [];
-
-  const dirents = execSync(`ls -d ${INITIATIVES_DIR}/*/ 2>/dev/null || true`, {
-    encoding: "utf8",
-  })
-    .trim()
-    .split("\n")
-    .filter((line) => line);
-
-  return dirents
-    .map((dir) => {
-      const metadataPath = join(dir, ".worklog", "metadata.json");
-      if (existsSync(metadataPath)) {
-        return readJSON<InitiativeMetadata>(metadataPath);
-      }
-      return null;
-    })
-    .filter((m): m is InitiativeMetadata => m !== null);
-}
-
-function getRecentSessions(initPath: string): string[] {
-  const sessionsDir = join(initPath, "sessions");
-  if (!existsSync(sessionsDir)) return [];
-
-  const sessions = execSync(`ls -d ${sessionsDir}/*/ 2>/dev/null || true`, {
-    encoding: "utf8",
-  })
-    .trim()
-    .split("\n")
-    .filter((line) => line)
-    .map((dir) => dir.split("/").filter((p) => p).pop() || "")
-    .filter((name) => name);
-
-  // Sort by date (newest first)
-  return sessions.sort().reverse();
-}
-
-function readJSON<T>(path: string): T {
-  return JSON.parse(readFileSync(path, "utf8"));
 }
