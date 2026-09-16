@@ -4,8 +4,53 @@ The Forge extension manages initiatives and work sessions with structured metada
 
 ## Installation
 
-1. Copy the `forge.ts` file to your Pi extensions directory
-2. The extension auto-registers the `/forge` command
+Pi discovers this extension automatically via the git package system. No manual copying required.
+
+### 1. Add Git Package to Pi Settings
+
+Edit `~/.pi/agent/settings.json` and add the worklog repository:
+
+```json
+{
+  "packages": [
+    "git:github.com/yonnyviz/worklog@main"
+  ]
+}
+```
+
+If the file doesn't exist, create it with the above content.
+
+### 2. Reload Pi
+
+Inside Pi, run:
+```
+/reload
+```
+
+Pi will:
+- Fetch the worklog repository
+- Read `package.json` to find the extension entry point
+- Auto-discover and load `src/forge.ts`
+- Register the `/forge` command
+
+### 3. Verify Installation
+
+Run `/forge` to open the main workflow menu. If successful, you'll see the initiative selection prompt.
+
+---
+
+## How It Works
+
+Pi's extension discovery system finds extensions from:
+- **Auto-discovery locations:** `~/.pi/agent/extensions/` (global, project-local `.pi/extensions/`)
+- **Git packages:** Referenced in `settings.json` with `git:` prefix
+- **NPM packages:** Referenced with `npm:` prefix
+
+This extension uses the **git package** approach:
+1. `package.json` declares `pi.extensions` pointing to `./src/forge.ts`
+2. Pi clones the repo and reads `package.json`
+3. The TypeScript extension auto-loads via jiti (no build step needed)
+4. Changes to the repo are picked up on next `/reload`
 
 ## Usage
 
