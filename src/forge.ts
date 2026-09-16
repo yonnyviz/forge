@@ -3,7 +3,16 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 
-const INITIATIVES_DIR = "/Users/yvizcaya/Documents/fujitsu/initiatives";
+function expandPath(p: string): string {
+  if (p.startsWith("~")) {
+    return p.replace("~", process.env.HOME || "");
+  }
+  return p;
+}
+
+const INITIATIVES_DIR = expandPath(
+  process.env.FORGE_INITIATIVES_DIR || "~/Documents/initiatives"
+);
 
 interface InitiativeMetadata {
   name: string;

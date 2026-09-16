@@ -33,7 +33,28 @@ Pi will:
 - Auto-discover and load `src/forge.ts`
 - Register the `/forge` command
 
-### 3. Verify Installation
+### 3. Set Initiatives Directory (Optional)
+
+By default, initiatives are stored in `~/Documents/initiatives`. To use a different location:
+
+```bash
+export FORGE_INITIATIVES_DIR=/path/to/your/initiatives
+```
+
+Add this to your shell profile (`.bashrc`, `.zshrc`, etc.) to persist across sessions:
+
+```bash
+# ~/.zshrc or ~/.bashrc
+export FORGE_INITIATIVES_DIR="$HOME/Documents/fujitsu/initiatives"
+```
+
+Or set it inline before running Pi:
+
+```bash
+FORGE_INITIATIVES_DIR=$HOME/my-initiatives pi
+```
+
+### 4. Verify Installation
 
 Run `/forge` to open the main workflow menu. If successful, you'll see the initiative selection prompt.
 
@@ -51,6 +72,28 @@ This extension uses the **git package** approach:
 2. Pi clones the repo and reads `package.json`
 3. The TypeScript extension auto-loads via jiti (no build step needed)
 4. Changes to the repo are picked up on next `/reload`
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|----------|
+| `FORGE_INITIATIVES_DIR` | `~/Documents/initiatives` | Root directory for all initiatives |
+
+### Examples
+
+```bash
+# Use default location
+/forge
+
+# Use custom location (set before starting Pi)
+export FORGE_INITIATIVES_DIR="$HOME/Projects/work"
+pi
+
+# Or inline
+FORGE_INITIATIVES_DIR="$HOME/fujitsu/initiatives" pi
+```
 
 ## Usage
 
