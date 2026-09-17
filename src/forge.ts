@@ -6,6 +6,8 @@ import {
   createWorkSession,
   ensureInitiativesDir,
   getRecentSessions,
+  formatInitiativeLabel,
+  formatInitiativeSummary,
   listInitiatives,
   readJSON,
 } from "./initiative-store.js";
@@ -88,21 +90,18 @@ async function mainWorkflow(
 ) {
   const initiatives = listInitiatives();
 
-  // Build selection options with "create new" at top
+  // Keep the main menu compact and ordered by recent activity.
   const createNewOption = "➕ Create new initiative";
+  const sortedInitiatives = [...initiatives].sort(
+    (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
+  );
   const initiativeOptions = [
     createNewOption,
-    ...(initiatives.length > 0 ? ["─────────────────────────────"] : []),
-    ...initiatives
-      .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())
-      .map(
-        (init) =>
-          `${init.displayName.padEnd(25)} │ ${init.status.padEnd(10)} │ ${init.phase.padEnd(10)}`
-      ),
+    ...sortedInitiatives.map((init) => formatInitiativeLabel(init, forgeState.activeInitiative)),
   ];
 
   // Step 1: Select initiative
-  const choice = await ctx.ui.select("🔨 Forge - What would you like to do?", initiativeOptions);
+  const choice = await ctx.ui.select("🔨 Forge · Choose an initiative", initiativeOptions);
   if (!choice) return;
 
   // Handle create new initiative
@@ -111,20 +110,9 @@ async function mainWorkflow(
     return;
   }
 
-  // Skip divider
-  if (choice.startsWith("─")) {
-    await mainWorkflow(ctx, pi, forgeState);
-    return;
-  }
-
-  // Find selected initiative
-  const selectedIndex = initiativeOptions.indexOf(choice);
-  if (selectedIndex < 0) return;
-
-  const sorted = [...initiatives].sort(
-    (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
-  );
-  const selectedInitiative = sorted[selectedIndex - (initiatives.length > 0 ? 2 : 1)];
+  // Find the selected initiative without relying on decorative menu rows.
+  const selectedIndex = initiativeOptions.indexOf(choice) - 1;
+  const selectedInitiative = sortedInitiatives[selectedIndex];
 
   if (!selectedInitiative) return;
 
@@ -132,36 +120,33 @@ async function mainWorkflow(
   const initPath = join(INITIATIVES_DIR, selectedInitiative.name);
   const metadata = readJSON(join(initPath, ".forge", "metadata.json")) as InitiativeMetadata;
 
-  ctx.ui.notify(
-    `\n📂 ${metadata.displayName}\n   ${metadata.description}\n\n   Goal: ${metadata.goal}\n   Status: ${metadata.status} (${metadata.phase})\n   Sessions: ${metadata.sessionCount}`,
-    "info"
-  );
-
-  // Update active state
+  // Update active state before rendering the selected initiative overview.
   forgeState.activeInitiative = selectedInitiative.name;
   forgeState.lastUpdated = new Date().toISOString();
   pi.appendEntry("forge-state", forgeState);
   ctx.ui.setStatus("forge", `🔨 ${selectedInitiative.name}`);
 
-  // Step 3: Get recent sessions
   const recentSessions = getRecentSessions(initPath);
+  ctx.ui.notify(
+    formatInitiativeSummary(metadata, recentSessions, forgeState.activeInitiative),
+    "info"
+  );
 
-  // Step 4: Action menu
   const actionOptions = [
-    "➕ Create new session",
+    "➕ Start a new session",
     ...(recentSessions.length > 0
-      ? ["▶️ Resume session", ...recentSessions.slice(0, 5).map((s) => `     ${s}`)]
+      ? ["▶️ Resume a recent session", ...recentSessions.slice(0, 5).map((s) => `     ${s}`)]
       : []),
-    "⚙️ Update status",
-    "🔄 Back to initiatives",
+    "⚙️ Update initiative status",
+    "← All initiatives",
   ];
 
-  const action = await ctx.ui.select("What would you like to do?", actionOptions);
+  const action = await ctx.ui.select(`🔨 ${metadata.displayName} · What next?`, actionOptions);
   if (!action) return;
 
-  if (action === "➕ Create new session") {
+  if (action === "➕ Start a new session") {
     await createSessionFlow(initPath, metadata, ctx, pi);
-  } else if (action === "▶️ Resume session") {
+  } else if (action === "▶️ Resume a recent session") {
     // Show selection of which session to resume
     const sessionChoice = await ctx.ui.select("Select session to resume:", recentSessions);
     if (sessionChoice) {
@@ -171,9 +156,9 @@ async function mainWorkflow(
     // User selected a specific session from the recent list
     const sessionName = action.trim();
     await resumeSessionFlow(initPath, metadata, sessionName, ctx, pi);
-  } else if (action === "⚙️ Update status") {
+  } else if (action === "⚙️ Update initiative status") {
     await updateStatusFlow(initPath, metadata, ctx, pi);
-  } else if (action === "🔄 Back to initiatives") {
+  } else if (action === "← All initiatives") {
     await mainWorkflow(ctx, pi, forgeState);
   }
 }
