@@ -62,7 +62,7 @@ Run `/forge` to open the main workflow menu. If successful, you'll see the initi
 
 ## Launch Pi for an Initiative
 
-The Forge CLI is the recommended way to begin new work. It starts a **new, normal Pi process** in the selected initiative directory; it does not try to change the working directory of an already-running Pi session.
+The Forge CLI is the recommended way to begin or resume work. It starts a **normal Pi process** in the selected initiative directory; it does not try to change the working directory of an already-running Pi process.
 
 Install the CLI separately from the Pi git package:
 
@@ -76,10 +76,11 @@ For local development, run `npm link` in this repository once, then use `forge`.
 ### Launcher flow
 
 1. `forge` lists initiatives from `FORGE_INITIATIVES_DIR`.
-2. You select an initiative and give the work session a name.
-3. Forge creates `sessions/YYYY-MM-DD_name/notes.md`, updates `.forge/metadata.json`, and logs the session.
-4. Forge starts Pi in the initiative root with a deterministic display name: `initiative-name — YYYY-MM-DD_session-name`.
-5. Pi performs its usual context discovery and saves its own session under that working directory.
+2. You select an initiative.
+3. Forge lets you create a new work session or select an existing one.
+4. New sessions create `sessions/YYYY-MM-DD_name/notes.md`, update `.forge/metadata.json`, and get logged.
+5. Forge starts Pi in the initiative root with a deterministic display name: `initiative-name — YYYY-MM-DD_session-name` and a stable session ID.
+6. Selecting an existing session reopens the same Pi session instead of creating a duplicate.
 
 For example, `forge-implementation` and a Forge session folder named `2026-09-16_cli-launcher` produce the Pi session name `forge-implementation — 2026-09-16_cli-launcher`.
 

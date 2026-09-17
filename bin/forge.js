@@ -2,14 +2,45 @@
 
 const { spawn } = require("node:child_process");
 const { createInterface } = require("node:readline/promises");
+const { homedir } = require("node:os");
 const { stdin, stdout } = require("node:process");
-const { join } = require("node:path");
+const { join, resolve } = require("node:path");
+const { existsSync, readFileSync, readdirSync, statSync } = require("node:fs");
 const {
   INITIATIVES_DIR,
   createWorkSession,
   ensureInitiativesDir,
+  getRecentSessions,
   listInitiatives,
 } = require("../src/initiative-store.js");
+
+function getPiSessionDir(cwd) {
+  const sessionRoot =
+    process.env.PI_CODING_AGENT_SESSION_DIR ||
+    join(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"), "sessions");
+  const safePath = `--${resolve(cwd).replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+  return join(sessionRoot, safePath);
+}
+
+function findNamedPiSession(cwd, name) {
+  const sessionDir = getPiSessionDir(cwd);
+  if (!existsSync(sessionDir)) return undefined;
+
+  return readdirSync(sessionDir)
+    .filter((entry) => entry.endsWith(".jsonl"))
+    .map((entry) => join(sessionDir, entry))
+    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+    .find((sessionPath) => {
+      return readFileSync(sessionPath, "utf8").split("\n").some((line) => {
+        try {
+          const entry = JSON.parse(line);
+          return entry.type === "session_info" && entry.name === name;
+        } catch {
+          return false;
+        }
+      });
+    });
+}
 
 async function main() {
   ensureInitiativesDir();
@@ -34,19 +65,51 @@ async function main() {
       throw new Error("Choose a listed initiative number");
     }
 
-    const sessionName = await rl.question("Session name [work]: ");
-    const name = sessionName.trim() || "work";
     const initiative = initiatives[index];
     const initiativePath = join(INITIATIVES_DIR, initiative.name);
-    const { sessionFolder } = createWorkSession(initiativePath, initiative, name);
+    const existingSessions = getRecentSessions(initiativePath);
+    let sessionFolder;
+
+    if (existingSessions.length === 0) {
+      stdout.write("\nNo existing sessions. Starting a new session.\n");
+      const sessionName = await rl.question("Session name [work]: ");
+      const name = sessionName.trim() || "work";
+      ({ sessionFolder } = createWorkSession(initiativePath, initiative, name));
+      stdout.write(`✓ Created Forge session: ${sessionFolder}\n`);
+    } else {
+      stdout.write("\n1. Create a new session\n2. Resume an existing session\n");
+      const action = await rl.question("Choose an action [1]: ");
+
+      if (action.trim() === "2") {
+        existingSessions.forEach((session, sessionIndex) => {
+          stdout.write(`${sessionIndex + 1}. ${session}\n`);
+        });
+        const selectedSession = await rl.question("Choose a session: ");
+        const sessionIndex = Number.parseInt(selectedSession, 10) - 1;
+        if (!Number.isInteger(sessionIndex) || !existingSessions[sessionIndex]) {
+          throw new Error("Choose a listed session number");
+        }
+        sessionFolder = existingSessions[sessionIndex];
+        stdout.write(`✓ Resuming Forge session: ${sessionFolder}\n`);
+      } else {
+        const sessionName = await rl.question("Session name [work]: ");
+        const name = sessionName.trim() || "work";
+        ({ sessionFolder } = createWorkSession(initiativePath, initiative, name));
+        stdout.write(`✓ Created Forge session: ${sessionFolder}\n`);
+      }
+    }
+
     const piSessionName = `${initiative.name} — ${sessionFolder}`;
 
-    stdout.write(`\n✓ Created Forge session: ${sessionFolder}\n`);
     stdout.write(`🏷️ Pi session: ${piSessionName}\n`);
     stdout.write(`🚀 Starting Pi in ${initiativePath}\n\n`);
 
     const piBin = process.env.FORGE_PI_BIN || "pi";
-    const child = spawn(piBin, ["--name", piSessionName], {
+    const existingPiSession = findNamedPiSession(initiativePath, piSessionName);
+    const piArgs = existingPiSession
+      ? ["--session", existingPiSession, "--name", piSessionName]
+      : ["--session-id", sessionFolder, "--name", piSessionName];
+    const child = spawn(piBin, piArgs, {
       cwd: initiativePath,
       stdio: "inherit",
     });
