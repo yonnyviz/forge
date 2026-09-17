@@ -54,31 +54,18 @@ Persistent initiatives use `schemaVersion: 2` metadata with exact document locat
 }
 ```
 
-`agent.nextAction` is a cache mirrored from `memory.md`; Forge updates both in the same operation. Full brief and memory content must not be embedded in metadata, to avoid stale duplicate sources of truth.
+`agent.nextAction` is a rebuildable cache mirrored from `memory.md`. Forge writes the authoritative Markdown document first, then updates metadata; readers must prefer `memory.md` if the cache is stale. Full brief and memory content must not be embedded in metadata, to avoid duplicated sources of truth.
 
 ### D3: Documents are compact and agent-readable
 
-Each document begins with a small YAML front matter block for fast scanning. Any Markdown body supplies only supporting context that does not fit the compact fields.
+Each document begins with a bounded JSON context block for fast scanning without adding a YAML parser dependency. Any Markdown body supplies only supporting context that does not fit the compact fields.
 
 Example `brief.md`:
 
 ```md
----
-type: forge/brief
-version: 1
-outcome: "Add proportional, durable initiative workflow support."
-done:
-  - "Persistent initiatives use brief.md and memory.md."
-scope:
-  in: ["creation", "resume", "CLI parity"]
-  out: ["dashboard", "automatic migration"]
-constraints:
-  - "Do not interrupt dashboard work."
-affectedPaths:
-  - src/forge.ts
-  - src/initiative-store.js
-  - bin/forge.js
----
+<!-- forge-context
+{"type":"forge/brief","version":1,"outcome":"Add proportional, durable initiative workflow support.","definitionOfDone":["Persistent initiatives use brief.md and memory.md."],"scope":{"in":["creation","resume","CLI parity"],"out":["dashboard","automatic migration"]},"constraints":["Do not interrupt dashboard work."],"affectedPaths":["src/forge.ts","src/initiative-store.js","bin/forge.js"]}
+-->
 
 # Brief
 ```
@@ -86,19 +73,9 @@ affectedPaths:
 Example `memory.md`:
 
 ```md
----
-type: forge/memory
-version: 1
-status: active
-nextAction: "Define shared document read/write helpers."
-blockers: []
-openQuestions:
-  - "Should quick tasks create any on-disk record?"
-decisions:
-  - id: D1
-    decision: "Metadata indexes documents; Markdown is authoritative."
-    rationale: "Avoid duplicated, stale context."
----
+<!-- forge-context
+{"type":"forge/memory","version":1,"status":"active","nextAction":"Define shared document read/write helpers.","blockers":[],"openQuestions":["Should quick tasks create any on-disk record?"],"decisions":[{"id":"D1","decision":"Metadata indexes documents; Markdown is authoritative.","rationale":"Avoid duplicated, stale context."}]}
+-->
 
 # Memory
 ```
@@ -141,13 +118,14 @@ A file format alone does not add context to an agent session. The extension and 
 
 ## Milestone 1: Shared record foundation
 
-- [ ] Define metadata v2 types and validation.
-- [ ] Add shared functions to create, parse, and update `brief.md` and `memory.md`.
-- [ ] Create minimal templates with YAML front matter.
-- [ ] Ensure metadata pointers and cached `agent.nextAction` update atomically.
-- [ ] Add tests for creation and document parsing.
+- [x] Define metadata v2 types and validation.
+- [x] Add shared functions to create, parse, and update `brief.md` and `memory.md`.
+- [x] Add atomic per-file writes with authoritative Markdown-first cache updates.
+- [x] Create minimal templates with JSON context blocks.
+- [x] Ensure metadata pointers and cached `agent.nextAction` are updated from the authoritative memory record.
+- [x] Add tests for creation, parsing, validation, and memory updates.
 
-**Done when:** a shared store API can create and read a persistent initiative without the Pi extension or CLI duplicating file logic.
+**Done when:** a shared store API can create, read, and update a persistent initiative without the Pi extension or CLI duplicating file logic. **Status: complete.**
 
 ## Milestone 2: Proportionate creation flows
 
@@ -188,4 +166,4 @@ A file format alone does not add context to an agent session. The extension and 
 
 ## Current next action
 
-Define the shared record API and its exact TypeScript/JavaScript boundary before changing either user-facing workflow.
+Integrate the shared record API into the Pi extension and Forge CLI creation flows in Milestone 2.

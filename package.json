@@ -2,6 +2,9 @@
   "name": "forge-ts-extension",
   "version": "0.0.1",
   "description": "Initiative and work session management extension and Pi launcher",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
   "bin": {
     "forge": "./bin/forge.js"
   },
