@@ -1,0 +1,191 @@
+# Initiative Workflow Support
+
+## Purpose
+
+Add lightweight, durable initiative workflow support to Forge. Forge provides storage, navigation, sessions, and the launcher; the workflow defines proportionate intake, durable context, resume behavior, and clean handoffs.
+
+## Scope
+
+**In scope**
+
+- Persistent initiative records based on `brief.md` and `memory.md`.
+- A compact metadata index optimized for agent resume.
+- Proportionate quick-task and persistent-initiative paths.
+- Consistent behavior in the Pi extension and Forge CLI.
+- Legacy initiative compatibility and opt-in migration.
+
+**Out of scope**
+
+- Dashboard implementation or changes.
+- Automatic destructive migration of existing initiatives.
+- Creating roadmap, milestones, ADRs, research, or task folders by default.
+
+## Architecture decisions
+
+### D1: Markdown documents are authoritative
+
+`brief.md` defines outcome, definition of done, scope, constraints, and affected areas. `memory.md` holds durable facts, decisions and rationale, progress, open questions, and next action.
+
+`.forge/metadata.json` is an index and operational summary, not a second canonical copy of either document.
+
+### D2: Metadata provides an agent entry point
+
+Persistent initiatives use `schemaVersion: 2` metadata with exact document locations and a compact resume card:
+
+```json
+{
+  "schemaVersion": 2,
+  "name": "initiative-workflow",
+  "status": "active",
+  "documents": {
+    "brief": "brief.md",
+    "memory": "memory.md",
+    "outputs": "outputs/"
+  },
+  "agent": {
+    "readOrder": ["brief.md", "memory.md"],
+    "nextAction": "Define shared document read/write helpers.",
+    "affectedPaths": [
+      "src/forge.ts",
+      "src/initiative-store.js",
+      "bin/forge.js"
+    ]
+  }
+}
+```
+
+`agent.nextAction` is a cache mirrored from `memory.md`; Forge updates both in the same operation. Full brief and memory content must not be embedded in metadata, to avoid stale duplicate sources of truth.
+
+### D3: Documents are compact and agent-readable
+
+Each document begins with a small YAML front matter block for fast scanning. Any Markdown body supplies only supporting context that does not fit the compact fields.
+
+Example `brief.md`:
+
+```md
+---
+type: forge/brief
+version: 1
+outcome: "Add proportional, durable initiative workflow support."
+done:
+  - "Persistent initiatives use brief.md and memory.md."
+scope:
+  in: ["creation", "resume", "CLI parity"]
+  out: ["dashboard", "automatic migration"]
+constraints:
+  - "Do not interrupt dashboard work."
+affectedPaths:
+  - src/forge.ts
+  - src/initiative-store.js
+  - bin/forge.js
+---
+
+# Brief
+```
+
+Example `memory.md`:
+
+```md
+---
+type: forge/memory
+version: 1
+status: active
+nextAction: "Define shared document read/write helpers."
+blockers: []
+openQuestions:
+  - "Should quick tasks create any on-disk record?"
+decisions:
+  - id: D1
+    decision: "Metadata indexes documents; Markdown is authoritative."
+    rationale: "Avoid duplicated, stale context."
+---
+
+# Memory
+```
+
+### D4: Structure expands only when justified
+
+A persistent initiative begins with:
+
+```text
+initiative/
+├── .forge/
+│   ├── metadata.json
+│   └── sessions.log
+├── brief.md
+├── memory.md
+├── outputs/
+└── sessions/             # created when session tracking is used
+```
+
+`research/`, `tasks/`, codebase-local planning folders, and detailed documentation are created only through an explicit expansion action when the work needs them.
+
+### D5: Separate quick tasks from persistent initiatives
+
+A quick, one-session task should remain in the Pi conversation or an optional single session note. Forge should not impose an initiative directory and full record on work that does not benefit from continuity.
+
+### D6: Legacy records remain readable
+
+Existing Forge initiatives continue to use `.forge/metadata.json` for discovery. If `brief.md` and `memory.md` do not exist, Forge treats the initiative as legacy and can offer an explicit, non-destructive migration based on existing metadata, README, `.claude.md`, and recent sessions.
+
+## Agent resume protocol
+
+When opening a persistent initiative, Forge should:
+
+1. Read `.forge/metadata.json`.
+2. Read the files named in `agent.readOrder`.
+3. Present outcome, status, decisions, open questions, next action, and affected paths.
+4. Read session notes or repository files only as required by those documents.
+
+A file format alone does not add context to an agent session. The extension and CLI must deliberately follow this protocol when starting or resuming work.
+
+## Milestone 1: Shared record foundation
+
+- [ ] Define metadata v2 types and validation.
+- [ ] Add shared functions to create, parse, and update `brief.md` and `memory.md`.
+- [ ] Create minimal templates with YAML front matter.
+- [ ] Ensure metadata pointers and cached `agent.nextAction` update atomically.
+- [ ] Add tests for creation and document parsing.
+
+**Done when:** a shared store API can create and read a persistent initiative without the Pi extension or CLI duplicating file logic.
+
+## Milestone 2: Proportionate creation flows
+
+- [ ] Replace the current detail-heavy creation intake with outcome, context/constraints, and persistence expectation.
+- [ ] Derive a slug from the outcome and allow confirmation.
+- [ ] Add a quick-task path with no required persistent initiative record.
+- [ ] Create the minimal persistent structure only when continuity is selected.
+- [ ] Reuse the same shared creation API in `src/forge.ts` and `bin/forge.js`.
+
+**Done when:** the CLI and Pi extension produce equivalent persistent records and neither creates planning/ADR scaffolding by default.
+
+## Milestone 3: Context-first resume and lifecycle
+
+- [ ] Load the metadata resume card, brief, and memory before session notes.
+- [ ] Add pause, handoff, and completion flows.
+- [ ] Capture durable decisions, progress, open questions, and next action in `memory.md`.
+- [ ] Store final handoff and implementation artifacts in `outputs/` only when useful.
+- [ ] Keep session notes as chronology and supporting detail, not canonical initiative context.
+
+**Done when:** resuming an initiative immediately identifies its goal, current next action, constraints, and relevant source paths.
+
+## Milestone 4: Legacy compatibility
+
+- [ ] Detect legacy initiatives without the v2 documents.
+- [ ] Preserve existing README, `.claude.md`, roadmap, ADR, session, and artifact files.
+- [ ] Offer opt-in migration; do not migrate automatically.
+- [ ] Test missing, malformed, and partially migrated records.
+
+**Done when:** old Forge initiatives remain usable and migration never deletes or overwrites useful history.
+
+## Verification
+
+- [ ] Unit-test document templates, parsing, metadata pointers, and update behavior.
+- [ ] Unit-test quick versus persistent workflow selection.
+- [ ] Unit-test legacy fallback and opt-in migration.
+- [ ] Exercise both `/forge` and `forge` CLI creation/resume flows.
+- [ ] Confirm this branch has no dependency on dashboard files or behavior.
+
+## Current next action
+
+Define the shared record API and its exact TypeScript/JavaScript boundary before changing either user-facing workflow.
