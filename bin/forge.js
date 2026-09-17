@@ -8,8 +8,11 @@ const { join, resolve } = require("node:path");
 const { existsSync, readFileSync, readdirSync, statSync } = require("node:fs");
 const {
   INITIATIVES_DIR,
+  createInitiative,
   createWorkSession,
   ensureInitiativesDir,
+  formatInitiativeLabel,
+  formatInitiativeSummary,
   getRecentSessions,
   listInitiatives,
 } = require("../src/initiative-store.js");
@@ -42,49 +45,103 @@ function findNamedPiSession(cwd, name) {
     });
 }
 
+function toKebabCase(value) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+}
+
+async function createInitiativeFlow(rl) {
+  const requestedName = await rl.question("Initiative name (kebab-case): ");
+  const initName = toKebabCase(requestedName);
+  if (!initName) throw new Error("An initiative name is required");
+  if (initName !== requestedName.trim()) {
+    stdout.write(`Using: ${initName}\n`);
+  }
+
+  const initPath = join(INITIATIVES_DIR, initName);
+  if (existsSync(initPath)) throw new Error(`Initiative '${initName}' already exists`);
+
+  const displayName = (await rl.question(`Display name [${initName}]: `)).trim() || initName;
+  const description = (await rl.question("Brief description [No description]: ")).trim() || "No description";
+  const goal = (await rl.question("Primary goal [To be defined]: ")).trim() || "To be defined";
+  const tags = (await rl.question("Tags (comma-separated) [none]: "))
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  const now = new Date().toISOString();
+  const metadata = {
+    name: initName,
+    displayName,
+    description,
+    goal,
+    status: "active",
+    phase: "planning",
+    created: now,
+    lastSession: null,
+    lastUpdated: now,
+    owner: process.env.USER || "Unassigned",
+    tags,
+    sessionCount: 0,
+    relatedInitiatives: [],
+  };
+
+  createInitiative(initPath, metadata);
+  stdout.write(`✓ Initiative created: ${displayName}\n`);
+  return metadata;
+}
+
 async function main() {
   ensureInitiativesDir();
   const initiatives = listInitiatives().sort(
     (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
   );
 
-  if (initiatives.length === 0) {
-    throw new Error(`No initiatives found in ${INITIATIVES_DIR}`);
-  }
-
   const rl = createInterface({ input: stdin, output: stdout });
   try {
-    stdout.write("\n🔨 Forge initiatives\n");
+    stdout.write("\n🔨 Forge · Choose an initiative\n");
+    stdout.write("1. ➕ Create new initiative\n");
     initiatives.forEach((initiative, index) => {
-      stdout.write(`${index + 1}. ${initiative.displayName} (${initiative.status})\n`);
+      stdout.write(`${index + 2}. ${formatInitiativeLabel(initiative)}\n`);
     });
 
     const selected = await rl.question("\nChoose an initiative: ");
-    const index = Number.parseInt(selected, 10) - 1;
-    if (!Number.isInteger(index) || !initiatives[index]) {
-      throw new Error("Choose a listed initiative number");
+    const selection = Number.parseInt(selected, 10);
+    let initiative;
+
+    if (selection === 1) {
+      initiative = await createInitiativeFlow(rl);
+    } else {
+      const index = selection - 2;
+      if (!Number.isInteger(index) || !initiatives[index]) {
+        throw new Error("Choose a listed initiative number");
+      }
+      initiative = initiatives[index];
     }
 
-    const initiative = initiatives[index];
     const initiativePath = join(INITIATIVES_DIR, initiative.name);
     const existingSessions = getRecentSessions(initiativePath);
     let sessionFolder;
 
+    stdout.write(`\n${formatInitiativeSummary(initiative, existingSessions)}\n`);
+
     if (existingSessions.length === 0) {
-      stdout.write("\nNo existing sessions. Starting a new session.\n");
+      stdout.write("\nNo sessions yet. Starting a new session.\n");
       const sessionName = await rl.question("Session name [work]: ");
       const name = sessionName.trim() || "work";
       ({ sessionFolder } = createWorkSession(initiativePath, initiative, name));
       stdout.write(`✓ Created Forge session: ${sessionFolder}\n`);
     } else {
-      stdout.write("\n1. Create a new session\n2. Resume an existing session\n");
+      stdout.write("\nWhat next?\n1. ➕ Start a new session\n2. ▶️ Resume a recent session\n");
       const action = await rl.question("Choose an action [1]: ");
 
       if (action.trim() === "2") {
         existingSessions.forEach((session, sessionIndex) => {
           stdout.write(`${sessionIndex + 1}. ${session}\n`);
         });
-        const selectedSession = await rl.question("Choose a session: ");
+        const selectedSession = await rl.question("Select session to resume: ");
         const sessionIndex = Number.parseInt(selectedSession, 10) - 1;
         if (!Number.isInteger(sessionIndex) || !existingSessions[sessionIndex]) {
           throw new Error("Choose a listed session number");
