@@ -487,6 +487,7 @@ function createWorkflowRecord(initPath, input = {}) {
     version: 1,
     outcome: input.outcome || input.goal || "To be defined",
     definitionOfDone: asStringList(input.definitionOfDone),
+    context: input.context || "",
     scope: isPlainObject(input.scope) ? input.scope : { in: [], out: [] },
     constraints: asStringList(input.constraints),
     affectedPaths: asStringList(input.affectedPaths),
@@ -509,6 +510,7 @@ function createWorkflowRecord(initPath, input = {}) {
 
   mkdirSync(join(initPath, ".forge"), { recursive: true });
   mkdirSync(outputsPath, { recursive: true });
+  writeFileAtomically(join(initPath, ".forge", "sessions.log"), "");
   writeFileAtomically(briefPath, createForgeContextDocument(briefContext, "# Brief"));
   writeFileAtomically(memoryPath, createForgeContextDocument(memoryContext, "# Memory"));
   writeFileAtomically(metadataPath, JSON.stringify(metadata, null, 2));

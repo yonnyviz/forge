@@ -75,16 +75,26 @@ For local development, run `npm link` in this repository once, then use `forge`.
 
 ### Launcher flow
 
-1. `forge` lists initiatives from `FORGE_INITIATIVES_DIR`.
-2. You select an initiative.
+1. `forge` opens a workflow menu from `FORGE_INITIATIVES_DIR`.
+2. You can start a quick task, create a persistent initiative, or select an existing one.
 3. Forge lets you create a new work session or select an existing one.
 4. New sessions create `sessions/YYYY-MM-DD_name/notes.md`, update `.forge/metadata.json`, and get logged.
 5. Forge starts Pi in the initiative root with a deterministic display name: `initiative-name — YYYY-MM-DD_session-name` and a stable session ID.
 6. Selecting an existing session reopens the same Pi session instead of creating a duplicate.
+7. To switch roots from an active Pi process, exit Pi and run `forge launch <initiative-name> [session-folder]`.
 
 For example, `forge-implementation` and a Forge session folder named `2026-09-16_cli-launcher` produce the Pi session name `forge-implementation — 2026-09-16_cli-launcher`.
 
 The Forge CLI waits while Pi is open and returns when Pi exits. Set `FORGE_PI_BIN` to use a different Pi executable while testing, for example `FORGE_PI_BIN=/path/to/pi forge`.
+
+To explicitly switch from another active Pi process, exit it and run:
+
+```bash
+forge launch initiative-name
+forge launch initiative-name 2026-09-17_session-name
+```
+
+Without a session folder, Forge creates a new session. With a session folder, it reopens that session.
 
 ## How It Works
 
@@ -129,18 +139,20 @@ FORGE_INITIATIVES_DIR="$HOME/initiatives" pi
 ```
 
 This opens the main workflow menu with options to:
-- ➕ Create new initiative
-- Select an existing initiative
-- Resume sessions
-- Update status
+- ⚡ Continue as a quick task without creating a Forge record
+- ➕ Create a persistent initiative
+- View and manage the initiative rooted at the current Pi directory
+- Exit and launch another initiative through the CLI
 
 ### Create Initiative
 
-1. Run `/forge`
-2. Select "➕ Create new initiative"
-3. Enter kebab-case name (e.g., `my-project`)
-4. Provide display name, description, goal, and tags
-5. Optionally create your first session
+1. Run `/forge` or `forge`
+2. Select persistent initiative creation
+3. Describe the outcome, definition of done, and relevant context or constraints
+4. Confirm the suggested kebab-case name
+5. Optionally create the first session
+
+Forge creates a compact record with `brief.md`, `memory.md`, and an agent-oriented metadata index. It does not create planning, milestone, ADR, or artifact scaffolding by default.
 
 **Folder structure created:**
 ```
@@ -148,13 +160,12 @@ my-project/
 ├── .forge/
 │   ├── metadata.json
 │   └── sessions.log
-├── sessions/
-├── planning/milestones/
-├── docs/
-├── artifacts/
-├── .claude.md
-└── README.md
+├── brief.md
+├── memory.md
+└── outputs/
 ```
+
+`sessions/` is created when the first work session is started.
 
 ### Create Session
 
@@ -182,12 +193,13 @@ my-project/
 
 ## File Structure
 
-- **`.forge/metadata.json`** - Initiative metadata (status, phase, owner, tags, session count)
-- **`.claude.md`** - Navigation and context for Claude
-- **`README.md`** - Public initiative overview
-- **`planning/ROADMAP.md`** - Milestone index and dependencies
-- **`docs/DECISIONS.md`** - Architecture decision records
-- **`sessions/YYYY-MM-DD_name/`** - Session work logs
+- **`.forge/metadata.json`** - Identity, status, timestamps, document pointers, and agent resume index
+- **`brief.md`** - Outcome, definition of done, scope, constraints, and affected paths
+- **`memory.md`** - Durable context, decisions, progress, open questions, and next action
+- **`outputs/`** - Useful handoff and delivery artifacts
+- **`sessions/YYYY-MM-DD_name/`** - Optional session chronology and notes
+
+Legacy initiatives may also contain `.claude.md`, `README.md`, planning files, and ADRs; those remain supported.
 
 ## Metadata Fields
 
@@ -199,6 +211,8 @@ my-project/
 
 ## State Management
 
-The extension stores active initiative state in the Pi session, restored on session start:
-- Status bar displays: 🔨 active-initiative-name
-- State persists across Pi sessions
+The extension derives the active initiative from Pi's current working directory:
+- Status bar displays: 🔨 current-initiative-name
+- A running Pi process cannot switch to another initiative root
+- Exit Pi and use `forge launch` to open another initiative
+- Legacy session state is cleared when the current directory is not an initiative

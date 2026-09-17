@@ -137,15 +137,15 @@ A file format alone does not add context to an agent session. The extension and 
 
 ## Milestone 2: Proportionate creation flows
 
-- [ ] Replace the current detail-heavy creation intake with outcome, context/constraints, and persistence expectation.
-- [ ] Derive a slug from the outcome and allow confirmation.
-- [ ] Add a quick-task path with no required persistent initiative record.
-- [ ] Create the minimal persistent structure only when continuity is selected.
-- [ ] Reuse the same shared creation API in `src/forge.ts` and `bin/forge.js`.
-- [ ] Keep `/forge` scoped to the current Pi working directory; do not mark another selected initiative as active.
-- [ ] Add a non-interactive CLI launch form that can reopen a named initiative/session from an in-Pi handoff.
+- [x] Replace the current detail-heavy creation intake with outcome, context/constraints, and persistence expectation.
+- [x] Derive a slug from the outcome and allow confirmation.
+- [x] Add a quick-task path with no required persistent initiative record.
+- [x] Create the minimal persistent structure only when continuity is selected.
+- [x] Reuse the same shared creation API in `src/forge.ts` and `bin/forge.js`.
+- [x] Keep `/forge` scoped to the current Pi working directory; do not mark another selected initiative as active.
+- [x] Add a non-interactive CLI launch form that can reopen a named initiative/session from an in-Pi handoff.
 
-**Done when:** the CLI and Pi extension produce equivalent persistent records, neither creates planning/ADR scaffolding by default, and switching roots always launches a separate Pi process.
+**Done when:** the CLI and Pi extension produce equivalent persistent records, neither creates planning/ADR scaffolding by default, and switching roots always launches a separate Pi process. **Status: complete.**
 
 ## Milestone 3: Context-first resume and lifecycle
 
@@ -169,11 +169,11 @@ A file format alone does not add context to an agent session. The extension and 
 ## Verification
 
 - [ ] Unit-test document templates, parsing, metadata pointers, and update behavior.
-- [ ] Unit-test quick versus persistent workflow selection.
+- [x] Unit-test quick versus persistent CLI workflow selection.
 - [ ] Unit-test legacy fallback and opt-in migration.
-- [ ] Exercise both `/forge` and `forge` CLI creation/resume flows.
-- [ ] Confirm this branch has no dependency on dashboard files or behavior.
+- [x] Exercise the `forge` CLI creation and launch flows.
+- [x] Confirm this branch has no dependency on dashboard files or behavior.
 
 ## Current next action
 
-Integrate the shared record API into the Pi extension and Forge CLI creation flows in Milestone 2.
+Begin Milestone 3: load metadata, `brief.md`, and `memory.md` into the context-first resume flow.

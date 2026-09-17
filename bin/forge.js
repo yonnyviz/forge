@@ -8,7 +8,7 @@ const { join, resolve } = require("node:path");
 const { existsSync, readFileSync, readdirSync, statSync } = require("node:fs");
 const {
   INITIATIVES_DIR,
-  createInitiative,
+  createWorkflowRecord,
   createWorkSession,
   ensureInitiativesDir,
   formatInitiativeLabel,
@@ -50,73 +50,145 @@ function toKebabCase(value) {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 async function createInitiativeFlow(rl) {
-  const requestedName = await rl.question("Initiative name (kebab-case): ");
-  const initName = toKebabCase(requestedName);
+  const outcome = (await rl.question("What outcome do you want, and what makes it done? ")).trim();
+  if (!outcome) throw new Error("An outcome is required");
+
+  const context = (await rl.question(
+    "What context, constraints, inputs, prior decisions, or paths matter? "
+  )).trim();
+  const suggestedName = toKebabCase(outcome) || "initiative";
+  const requestedName = (await rl.question(`Initiative name [${suggestedName}]: `)).trim();
+  const initName = toKebabCase(requestedName || suggestedName);
   if (!initName) throw new Error("An initiative name is required");
-  if (initName !== requestedName.trim()) {
-    stdout.write(`Using: ${initName}\n`);
-  }
 
   const initPath = join(INITIATIVES_DIR, initName);
   if (existsSync(initPath)) throw new Error(`Initiative '${initName}' already exists`);
 
-  const displayName = (await rl.question(`Display name [${initName}]: `)).trim() || initName;
-  const description = (await rl.question("Brief description [No description]: ")).trim() || "No description";
-  const goal = (await rl.question("Primary goal [To be defined]: ")).trim() || "To be defined";
-  const tags = (await rl.question("Tags (comma-separated) [none]: "))
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-  const now = new Date().toISOString();
-  const metadata = {
+  const { metadata } = createWorkflowRecord(initPath, {
     name: initName,
-    displayName,
-    description,
-    goal,
-    status: "active",
+    displayName: outcome,
+    description: context || outcome,
+    goal: outcome,
+    context,
     phase: "planning",
-    created: now,
-    lastSession: null,
-    lastUpdated: now,
-    owner: process.env.USER || "Unassigned",
-    tags,
-    sessionCount: 0,
-    relatedInitiatives: [],
-  };
-
-  createInitiative(initPath, metadata);
-  stdout.write(`✓ Initiative created: ${displayName}\n`);
+  });
+  stdout.write(`✓ Initiative created: ${metadata.displayName}\n`);
   return metadata;
+}
+
+function nextSessionName(initiativePath) {
+  const existing = new Set(getRecentSessions(initiativePath));
+  let suffix = "work";
+  let counter = 2;
+  const date = new Date().toISOString().split("T")[0];
+  while (existing.has(`${date}_${suffix}`)) {
+    suffix = `work-${counter}`;
+    counter += 1;
+  }
+  return suffix;
+}
+
+async function launchPi(cwd, piArgs, rl) {
+  // Release stdin before handing the terminal to Pi. Keeping readline active
+  // here can consume keystrokes intended for Pi's TUI editor.
+  rl.close();
+  stdin.pause();
+
+  const piBin = process.env.FORGE_PI_BIN || "pi";
+  const child = spawn(piBin, piArgs, {
+    cwd,
+    stdio: "inherit",
+  });
+
+  await new Promise((resolve, reject) => {
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (signal || code === 0) return resolve();
+      reject(new Error(`Pi exited with code ${code}`));
+    });
+  });
+}
+
+async function launchNamedInitiative(initiativeName, sessionName, rl) {
+  const initiative = listInitiatives().find((item) => item.name === initiativeName);
+  if (!initiative) throw new Error(`Initiative '${initiativeName}' was not found`);
+
+  const initiativePath = join(INITIATIVES_DIR, initiative.name);
+  const existingSessions = getRecentSessions(initiativePath);
+  let sessionFolder = sessionName;
+  if (sessionFolder && !existingSessions.includes(sessionFolder)) {
+    throw new Error(`Session '${sessionFolder}' was not found in '${initiativeName}'`);
+  }
+
+  if (!sessionFolder) {
+    sessionFolder = createWorkSession(
+      initiativePath,
+      initiative,
+      nextSessionName(initiativePath)
+    ).sessionFolder;
+  }
+
+  const piSessionName = `${initiative.name} — ${sessionFolder}`;
+  const existingPiSession = findNamedPiSession(initiativePath, piSessionName);
+  const piArgs = existingPiSession
+    ? ["--session", existingPiSession, "--name", piSessionName]
+    : ["--session-id", sessionFolder, "--name", piSessionName];
+
+  stdout.write(`🏷️ Pi session: ${piSessionName}\n`);
+  stdout.write(`🚀 Starting Pi in ${initiativePath}\n\n`);
+  await launchPi(initiativePath, piArgs, rl);
 }
 
 async function main() {
   ensureInitiativesDir();
-  const initiatives = listInitiatives().sort(
-    (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
-  );
-
+  const args = process.argv.slice(2);
   const rl = createInterface({ input: stdin, output: stdout });
+
   try {
-    stdout.write("\n🔨 Forge · Choose an initiative\n");
-    stdout.write("1. ➕ Create new initiative\n");
+    if (args[0] === "launch") {
+      if (!args[1] || args.length > 3) {
+        throw new Error("Usage: forge launch <initiative-name> [session-folder]");
+      }
+      await launchNamedInitiative(args[1], args[2], rl);
+      return;
+    }
+    if (args.length > 0) {
+      throw new Error("Usage: forge [launch <initiative-name> [session-folder]]");
+    }
+
+    const initiatives = listInitiatives().sort(
+      (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
+    );
+
+    stdout.write("\n🔨 Forge · Choose a workflow\n");
+    stdout.write("1. ⚡ Start a quick task in the current directory\n");
+    stdout.write("2. ➕ Create persistent initiative\n");
     initiatives.forEach((initiative, index) => {
-      stdout.write(`${index + 2}. ${formatInitiativeLabel(initiative)}\n`);
+      stdout.write(`${index + 3}. ${formatInitiativeLabel(initiative)}\n`);
     });
 
-    const selected = await rl.question("\nChoose an initiative: ");
+    const selected = await rl.question("\nChoose a workflow: ");
     const selection = Number.parseInt(selected, 10);
-    let initiative;
 
     if (selection === 1) {
+      stdout.write("🚀 Starting a quick task in the current directory. No Forge record will be created.\n\n");
+      await launchPi(process.cwd(), [], rl);
+      return;
+    }
+
+    let initiative;
+    if (selection === 2) {
       initiative = await createInitiativeFlow(rl);
     } else {
-      const index = selection - 2;
+      const index = selection - 3;
       if (!Number.isInteger(index) || !initiatives[index]) {
-        throw new Error("Choose a listed initiative number");
+        throw new Error("Choose a listed workflow number");
       }
       initiative = initiatives[index];
     }
@@ -157,33 +229,13 @@ async function main() {
     }
 
     const piSessionName = `${initiative.name} — ${sessionFolder}`;
-
-    stdout.write(`🏷️ Pi session: ${piSessionName}\n`);
-    stdout.write(`🚀 Starting Pi in ${initiativePath}\n\n`);
-
-    const piBin = process.env.FORGE_PI_BIN || "pi";
     const existingPiSession = findNamedPiSession(initiativePath, piSessionName);
     const piArgs = existingPiSession
       ? ["--session", existingPiSession, "--name", piSessionName]
       : ["--session-id", sessionFolder, "--name", piSessionName];
-    // Release stdin before handing the terminal to Pi. Keeping readline active
-    // here can consume keystrokes intended for Pi's TUI editor.
-    rl.close();
-    stdin.pause();
-
-    const child = spawn(piBin, piArgs, {
-      cwd: initiativePath,
-      stdio: "inherit",
-    });
-
-    await new Promise((resolve, reject) => {
-      child.on("error", reject);
-      child.on("exit", (code, signal) => {
-        if (signal) return resolve();
-        if (code === 0) return resolve();
-        reject(new Error(`Pi exited with code ${code}`));
-      });
-    });
+    stdout.write(`🏷️ Pi session: ${piSessionName}\n`);
+    stdout.write(`🚀 Starting Pi in ${initiativePath}\n\n`);
+    await launchPi(initiativePath, piArgs, rl);
   } finally {
     rl.close();
   }

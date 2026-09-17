@@ -1,9 +1,10 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   INITIATIVES_DIR,
   createWorkSession,
+  createWorkflowRecord,
   ensureInitiativesDir,
   getRecentSessions,
   formatInitiativeLabel,
@@ -26,6 +27,9 @@ interface InitiativeMetadata {
   tags: string[];
   sessionCount: number;
   relatedInitiatives: string[];
+  schemaVersion?: number;
+  documents?: { brief: string; memory: string; outputs: string };
+  agent?: { readOrder: string[]; nextAction: string; affectedPaths: string[] };
 }
 
 interface ForgeState {
@@ -45,11 +49,19 @@ export default function (pi: ExtensionAPI) {
     for (const entry of entries) {
       if (entry.type === "custom" && entry.customType === "forge-state") {
         forgeState = entry.data as ForgeState;
-        if (forgeState.activeInitiative) {
-          ctx.ui.setStatus("forge", `🔨 ${forgeState.activeInitiative}`);
-        }
         break;
       }
+    }
+
+    // A restored selection is not valid if this Pi process is rooted
+    // elsewhere. The working directory is the source of truth.
+    const currentInitiative = getCurrentInitiative();
+    forgeState.activeInitiative = currentInitiative?.metadata.name || null;
+    forgeState.lastUpdated = new Date().toISOString();
+    if (currentInitiative) {
+      ctx.ui.setStatus("forge", `🔨 ${currentInitiative.metadata.name}`);
+    } else {
+      ctx.ui.setStatus("forge", "");
     }
   });
 
@@ -80,7 +92,28 @@ function toKebabCase(str: string): string {
   return str
     .toLowerCase()
     .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function getCurrentInitiative(): { path: string; metadata: InitiativeMetadata } | null {
+  const path = process.cwd();
+  const metadataPath = join(path, ".forge", "metadata.json");
+  if (!existsSync(metadataPath)) return null;
+
+  try {
+    return { path, metadata: readJSON(metadataPath) as InitiativeMetadata };
+  } catch {
+    return null;
+  }
+}
+
+function notifyWorkspaceSwitch(ctx: ExtensionCommandContext, initiativeName: string) {
+  ctx.ui.notify(
+    `Pi cannot change its working directory while running. Exit Pi, then run: forge launch ${initiativeName}`,
+    "info"
+  );
 }
 
 async function mainWorkflow(
@@ -88,14 +121,25 @@ async function mainWorkflow(
   pi: ExtensionAPI,
   forgeState: ForgeState
 ) {
-  const initiatives = listInitiatives();
+  const currentInitiative = getCurrentInitiative();
+  const initiatives = currentInitiative ? [currentInitiative.metadata] : listInitiatives();
+  if (!currentInitiative && forgeState.activeInitiative) {
+    forgeState.activeInitiative = null;
+    forgeState.lastUpdated = new Date().toISOString();
+    pi.appendEntry("forge-state", forgeState);
+    ctx.ui.setStatus("forge", "");
+  }
 
-  // Keep the main menu compact and ordered by recent activity.
-  const createNewOption = "➕ Create new initiative";
+  // Inside Pi, show only the initiative rooted at the current working directory.
+  const quickTaskOption = "⚡ Continue as a quick task (no Forge record)";
+  const createNewOption = currentInitiative
+    ? "↗️ Switch initiative (exit Pi first)"
+    : "➕ Create persistent initiative";
   const sortedInitiatives = [...initiatives].sort(
     (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
   );
   const initiativeOptions = [
+    quickTaskOption,
     createNewOption,
     ...sortedInitiatives.map((init) => formatInitiativeLabel(init, forgeState.activeInitiative)),
   ];
@@ -104,14 +148,23 @@ async function mainWorkflow(
   const choice = await ctx.ui.select("🔨 Forge · Choose an initiative", initiativeOptions);
   if (!choice) return;
 
-  // Handle create new initiative
+  if (choice === quickTaskOption) {
+    ctx.ui.notify("Continuing as a quick task. No Forge record will be created.", "info");
+    return;
+  }
+
+  // A running Pi process cannot switch to another initiative root.
   if (choice === createNewOption) {
-    await createInitiativeFlow(ctx, pi, forgeState);
+    if (currentInitiative) {
+      ctx.ui.notify("Exit Pi and run `forge` to choose another initiative.", "info");
+    } else {
+      await createInitiativeFlow(ctx, pi, forgeState);
+    }
     return;
   }
 
   // Find the selected initiative without relying on decorative menu rows.
-  const selectedIndex = initiativeOptions.indexOf(choice) - 1;
+  const selectedIndex = initiativeOptions.indexOf(choice) - 2;
   const selectedInitiative = sortedInitiatives[selectedIndex];
 
   if (!selectedInitiative) return;
@@ -120,7 +173,12 @@ async function mainWorkflow(
   const initPath = join(INITIATIVES_DIR, selectedInitiative.name);
   const metadata = readJSON(join(initPath, ".forge", "metadata.json")) as InitiativeMetadata;
 
-  // Update active state before rendering the selected initiative overview.
+  if (!currentInitiative && resolve(initPath) !== resolve(process.cwd())) {
+    notifyWorkspaceSwitch(ctx, selectedInitiative.name);
+    return;
+  }
+
+  // Update active state only for the initiative rooted at this Pi process.
   forgeState.activeInitiative = selectedInitiative.name;
   forgeState.lastUpdated = new Date().toISOString();
   pi.appendEntry("forge-state", forgeState);
@@ -138,7 +196,7 @@ async function mainWorkflow(
       ? ["▶️ Resume a recent session", ...recentSessions.slice(0, 5).map((s) => `     ${s}`)]
       : []),
     "⚙️ Update initiative status",
-    "← All initiatives",
+    ...(currentInitiative ? ["← Close"] : ["← All initiatives"]),
   ];
 
   const action = await ctx.ui.select(`🔨 ${metadata.displayName} · What next?`, actionOptions);
@@ -168,80 +226,68 @@ async function createInitiativeFlow(
   pi: ExtensionAPI,
   forgeState: ForgeState
 ) {
-  const name = await ctx.ui.input("Initiative name (kebab-case):", "");
-  if (!name.trim()) {
+  const outcome = await ctx.ui.input(
+    "What outcome do you want, and what makes it done?",
+    ""
+  );
+  if (!outcome.trim()) {
     ctx.ui.notify("Cancelled", "info");
     return;
   }
 
-  let initName = name.trim();
+  const context = (await ctx.ui.input(
+    "What context, constraints, inputs, prior decisions, or paths matter?",
+    ""
+  )) || "";
+  const suggestedName = toKebabCase(outcome) || "initiative";
+  let initName = (await ctx.ui.input(
+    "Initiative name (kebab-case):",
+    suggestedName
+  )).trim();
+  if (!initName) {
+    ctx.ui.notify("Cancelled", "info");
+    return;
+  }
 
-  // Validate kebab-case
   if (!isValidKebabCase(initName)) {
     const suggestion = toKebabCase(initName);
     const ok = await ctx.ui.confirm(
       "Invalid name",
       `Name contains invalid characters. Use: ${suggestion}?`
     );
-    if (!ok) return;
+    if (!ok || !suggestion) return;
     initName = suggestion;
   }
 
-  // Check if already exists
   const initPath = join(INITIATIVES_DIR, initName);
   if (existsSync(initPath)) {
     ctx.ui.notify(`Initiative '${initName}' already exists`, "error");
     return;
   }
 
-  // Gather details
-  const displayName =
-    (await ctx.ui.input("Display name (human-readable):", initName)) || initName;
-  const description =
-    (await ctx.ui.input("Brief description:", "")) || "No description";
-  const goal =
-    (await ctx.ui.input("Primary goal:", "")) || "To be defined";
-  const tags = (
-    (await ctx.ui.input("Tags (comma-separated):", "")) || ""
-  )
-    .split(",")
-    .map((t) => t.trim())
-    .filter((t) => t);
-
-  // Create folder structure
-  const metadata: InitiativeMetadata = {
+  const { metadata } = createWorkflowRecord(initPath, {
     name: initName,
-    displayName,
-    description,
-    goal,
-    status: "active",
+    displayName: outcome.trim(),
+    description: context || outcome.trim(),
+    goal: outcome.trim(),
+    context,
     phase: "planning",
-    created: new Date().toISOString(),
-    lastSession: null,
-    lastUpdated: new Date().toISOString(),
-    owner: "yvizcaya",
-    tags,
-    sessionCount: 0,
-    relatedInitiatives: [],
-  };
+  });
 
-  createInitiativeFolders(initPath, metadata);
+  // This Pi process remains in its original directory. The new initiative is
+  // usable only after launching a new Pi process from its root.
+  ctx.ui.notify(
+    `✓ Initiative created: ${metadata.displayName}\n\nExit Pi, then run: forge launch ${initName}`,
+    "success"
+  );
 
-  // Set as active
-  forgeState.activeInitiative = initName;
-  forgeState.lastUpdated = new Date().toISOString();
-  pi.appendEntry("forge-state", forgeState);
-
-  ctx.ui.setStatus("forge", `🔨 ${initName}`);
-  ctx.ui.notify(`✓ Initiative created: ${displayName}`, "success");
-
-  // Offer to create first session
   const startSession = await ctx.ui.confirm(
     "Create first session?",
-    "Start working now?"
+    "Create its Forge session before launching it?"
   );
   if (startSession) {
-    await createSessionFlow(initPath, metadata, ctx, pi);
+    await createSessionFlow(initPath, metadata, ctx, pi, false);
+    ctx.ui.notify(`When ready, run: forge launch ${initName}`, "info");
   }
 }
 
@@ -410,7 +456,8 @@ async function createSessionFlow(
   initPath: string,
   metadata: InitiativeMetadata,
   ctx: ExtensionCommandContext,
-  pi: ExtensionAPI
+  pi: ExtensionAPI,
+  allowPiRename = true
 ) {
   const sessionName =
     (await ctx.ui.input("Session name (kebab-case):", "")) || "work";
@@ -419,10 +466,13 @@ async function createSessionFlow(
     return;
   }
 
-  // Optionally name the Pi session
-  const piSessionName = await ctx.ui.input("Pi session name (optional):", "");
-  if (piSessionName.trim()) {
-    pi.setSessionName(piSessionName);
+  // Renaming is only meaningful when this Pi process is rooted in the
+  // initiative being managed.
+  if (allowPiRename) {
+    const piSessionName = await ctx.ui.input("Pi session name (optional):", "");
+    if (piSessionName.trim()) {
+      pi.setSessionName(piSessionName);
+    }
   }
 
   const { sessionFolder } = createWorkSession(initPath, metadata, sessionName);
