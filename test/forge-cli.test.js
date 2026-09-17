@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } = require("node:fs");
+const { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
@@ -16,6 +16,28 @@ function setup() {
   writeFileSync(fakePi, "#!/bin/sh\nprintf '%s\\n' \"$PWD\" > \"$FORGE_TEST_LOG\"\nprintf '%s\\n' \"$*\" >> \"$FORGE_TEST_LOG\"\n");
   chmodSync(fakePi, 0o755);
   return { root, logPath, fakePi };
+}
+
+function createLegacyInitiative(root, name = "legacy-cli") {
+  const initiativePath = join(root, name);
+  mkdirSync(join(initiativePath, ".forge"), { recursive: true });
+  writeFileSync(join(initiativePath, ".forge", "metadata.json"), JSON.stringify({
+    name,
+    displayName: "Legacy CLI",
+    description: "Legacy CLI context",
+    goal: "Migrate from the CLI",
+    status: "active",
+    phase: "planning",
+    created: "2026-09-01T00:00:00.000Z",
+    lastSession: null,
+    lastUpdated: "2026-09-01T00:00:00.000Z",
+    owner: "owner",
+    tags: [],
+    sessionCount: 0,
+    relatedInitiatives: [],
+  }, null, 2));
+  writeFileSync(join(initiativePath, "README.md"), "# Legacy CLI\n\n## Goal\nMigrate from the CLI\n");
+  return initiativePath;
 }
 
 function forgeEnvironment(setupState) {
@@ -105,6 +127,55 @@ test("launch command opens a named initiative in its own root", () => {
     assert.equal(result.status, 0, result.stderr);
     assert.equal(realpathSync(readFileSync(state.logPath, "utf8").split("\n")[0]), realpathSync(initiativePath));
     assert.match(result.stdout, /Starting Pi in/);
+  } finally {
+    rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
+test("migration dry-run previews without writing workflow files", () => {
+  const state = setup();
+  try {
+    const initiativePath = createLegacyInitiative(state.root);
+    const result = runForge(["migrate", "legacy-cli", "--dry-run"], "", state);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Migration preview/);
+    assert.match(result.stdout, /Status: ready/);
+    assert.equal(existsSync(join(initiativePath, "brief.md")), false);
+    assert.equal(existsSync(join(initiativePath, ".forge", "metadata.pre-v2.json")), false);
+  } finally {
+    rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
+test("cancelled CLI migration leaves the legacy record unchanged", () => {
+  const state = setup();
+  try {
+    const initiativePath = createLegacyInitiative(state.root);
+    const metadataBefore = readFileSync(join(initiativePath, ".forge", "metadata.json"), "utf8");
+    const result = runForge(["migrate", "legacy-cli"], "n\n", state);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Migration cancelled/);
+    assert.equal(readFileSync(join(initiativePath, ".forge", "metadata.json"), "utf8"), metadataBefore);
+    assert.equal(existsSync(join(initiativePath, "brief.md")), false);
+  } finally {
+    rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
+test("confirmed CLI migration creates workflow files and backup", () => {
+  const state = setup();
+  try {
+    const initiativePath = createLegacyInitiative(state.root);
+    const result = runForge(["migrate", "legacy-cli"], "y\n", state);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Migration complete/);
+    assert.equal(existsSync(join(initiativePath, "brief.md")), true);
+    assert.equal(existsSync(join(initiativePath, "memory.md")), true);
+    assert.equal(existsSync(join(initiativePath, ".forge", "metadata.pre-v2.json")), true);
+    assert.equal(JSON.parse(readFileSync(join(initiativePath, ".forge", "metadata.json"), "utf8")).schemaVersion, 2);
   } finally {
     rmSync(state.root, { recursive: true, force: true });
   }

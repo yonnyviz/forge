@@ -159,18 +159,20 @@ A file format alone does not add context to an agent session. The extension and 
 
 ## Milestone 4: Legacy compatibility
 
-- [ ] Detect legacy initiatives without the v2 documents.
-- [ ] Preserve existing README, `.claude.md`, roadmap, ADR, session, and artifact files.
-- [ ] Offer opt-in migration; do not migrate automatically.
-- [ ] Test missing, malformed, and partially migrated records.
+- [x] Detect legacy initiatives without the v2 documents.
+- [x] Preserve existing README, `.claude.md`, roadmap, ADR, session, and artifact files.
+- [x] Offer dry-run and explicitly confirmed migration; never migrate automatically.
+- [x] Back up original metadata before activating schema v2.
+- [x] Block migration rather than overwrite conflicting `brief.md` or `memory.md` files.
+- [x] Test missing, malformed, and partially migrated records.
 
-**Done when:** old Forge initiatives remain usable and migration never deletes or overwrites useful history.
+**Done when:** old Forge initiatives remain usable and migration never deletes or overwrites useful history. **Status: complete.**
 
 ## Verification
 
-- [ ] Unit-test document templates, parsing, metadata pointers, and update behavior.
+- [x] Unit-test document templates, parsing, metadata pointers, and update behavior.
 - [x] Unit-test quick versus persistent CLI workflow selection.
-- [ ] Unit-test legacy fallback and opt-in migration.
+- [x] Unit-test legacy detection, dry-run, confirmed migration, conflicts, and partial migration.
 - [x] Exercise the `forge` CLI creation and launch flows.
 - [x] Confirm this branch has no dependency on dashboard files or behavior.
 

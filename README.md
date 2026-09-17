@@ -167,6 +167,24 @@ my-project/
 
 `sessions/` is created when the first work session is started.
 
+### Migrate a Legacy Initiative
+
+Preview the migration first:
+
+```bash
+forge migrate initiative-name --dry-run
+```
+
+Apply it with explicit confirmation:
+
+```bash
+forge migrate initiative-name
+```
+
+Migration creates missing `brief.md`, `memory.md`, and `outputs/`, upgrades metadata to schema v2, and saves the original metadata as `.forge/metadata.pre-v2*.json`. Existing README, `.claude.md`, roadmap, decisions, sessions, artifacts, and valid workflow documents are preserved. A conflicting `brief.md` or `memory.md` blocks migration rather than being overwritten.
+
+Inside an initiative-rooted Pi process, `/forge` offers **Preview workflow migration** for legacy records.
+
 ### Create Session
 
 1. Select an initiative

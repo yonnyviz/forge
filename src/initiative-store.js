@@ -580,6 +580,278 @@ function updateWorkflowBrief(initPath, updates = {}) {
   return { metadata, brief };
 }
 
+function readOptionalText(path) {
+  return existsSync(path) ? readFileSync(path, "utf8") : "";
+}
+
+function extractMarkdownSection(content, heading) {
+  if (!content) return "";
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = content.match(new RegExp(`^#{1,6}\\s+${escaped}\\s*$\\n([\\s\\S]*?)(?=^#{1,6}\\s|(?![\\s\\S]))`, "im"));
+  return match ? match[1].trim() : "";
+}
+
+function extractUsefulList(content) {
+  return content
+    .split("\n")
+    .map((line) => line.replace(/^\s*[-*]\s*(?:\[[ xX]\]\s*)?/, "").trim())
+    .filter((line) => line && !/^\[.*\]$/.test(line) && !/^(none|none yet|tbd)$/i.test(line));
+}
+
+function firstUsefulValue(...values) {
+  return values.find((value) => typeof value === "string" && value.trim() &&
+    !/^(to be defined|no description|tbd)$/i.test(value.trim()))?.trim() || "To be defined";
+}
+
+function normalizeWorkflowStatus(status) {
+  return WORKFLOW_STATUSES.includes(status) ? status : "active";
+}
+
+function normalizeWorkflowPhase(phase, status) {
+  if (status === "completed") return "complete";
+  return WORKFLOW_PHASES.includes(phase) ? phase : "planning";
+}
+
+function findLegacySources(initPath) {
+  const candidates = [
+    "README.md",
+    ".claude.md",
+    "planning/ROADMAP.md",
+    "docs/DECISIONS.md",
+  ];
+  const recentSession = getRecentSessions(initPath)
+    .map((session) => `sessions/${session}/notes.md`)
+    .find((path) => existsSync(join(initPath, path)));
+  if (recentSession) candidates.push(recentSession);
+  return candidates.filter((path) => existsSync(join(initPath, path)));
+}
+
+function parseExistingWorkflowDocument(path, type, label, conflicts) {
+  if (!existsSync(path)) return null;
+  try {
+    return parseForgeContextDocument(readFileSync(path, "utf8"), type);
+  } catch {
+    conflicts.push(`${label} exists but is not a valid ${type} document`);
+    return null;
+  }
+}
+
+function isWorkflowInitiative(initPath) {
+  try {
+    readWorkflowRecord(initPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function planLegacyMigration(initPath) {
+  const metadataPath = join(initPath, ".forge", "metadata.json");
+  if (!existsSync(metadataPath)) throw new Error("Legacy initiative metadata was not found");
+
+  const legacyMetadata = readJSON(metadataPath);
+  if (!isPlainObject(legacyMetadata) || typeof legacyMetadata.name !== "string") {
+    throw new Error("Legacy initiative metadata is malformed or has no name");
+  }
+
+  if (isWorkflowInitiative(initPath)) {
+    return {
+      initiativeName: legacyMetadata.name,
+      alreadyCurrent: true,
+      canMigrate: false,
+      conflicts: [],
+      warnings: ["Initiative already uses the Forge workflow record."],
+      sources: [],
+      creates: [],
+      preserves: [],
+    };
+  }
+
+  const conflicts = [];
+  const warnings = [];
+  const sources = findLegacySources(initPath);
+  const briefPath = join(initPath, WORKFLOW_DOCUMENTS.brief);
+  const memoryPath = join(initPath, WORKFLOW_DOCUMENTS.memory);
+  const existingBrief = parseExistingWorkflowDocument(
+    briefPath,
+    "forge/brief",
+    WORKFLOW_DOCUMENTS.brief,
+    conflicts
+  );
+  const existingMemory = parseExistingWorkflowDocument(
+    memoryPath,
+    "forge/memory",
+    WORKFLOW_DOCUMENTS.memory,
+    conflicts
+  );
+
+  const readme = readOptionalText(join(initPath, "README.md"));
+  const claude = readOptionalText(join(initPath, ".claude.md"));
+  const recentSessionPath = sources.find((path) => path.startsWith("sessions/"));
+  const recentSession = recentSessionPath ? readOptionalText(join(initPath, recentSessionPath)) : "";
+  const title = readme.match(/^#\s+(.+)$/m)?.[1]?.trim() || legacyMetadata.displayName;
+  const outcome = firstUsefulValue(
+    legacyMetadata.goal,
+    extractMarkdownSection(readme, "Goal"),
+    legacyMetadata.description,
+    title
+  );
+  const context = firstUsefulValue(
+    legacyMetadata.description,
+    extractMarkdownSection(claude, "Context"),
+    extractMarkdownSection(readme, "Overview")
+  );
+  const definitionOfDone = extractUsefulList(
+    extractMarkdownSection(readme, "Definition of Done")
+  );
+  const progress = extractUsefulList(extractMarkdownSection(recentSession, "What Was Done"));
+  const nextTasks = extractUsefulList(extractMarkdownSection(recentSession, "Next Session"));
+  const blockers = extractUsefulList(extractMarkdownSection(recentSession, "Blockers/Questions"));
+  const nextAction = nextTasks[0] || "Review migrated context and choose the next action.";
+  const openQuestions = [
+    "Review the migrated brief and memory for missing or ambiguous legacy context.",
+  ];
+  if (outcome === "To be defined") openQuestions.push("Define the initiative outcome.");
+  if (definitionOfDone.length === 0) openQuestions.push("Define what makes this initiative done.");
+
+  const now = new Date().toISOString();
+  const status = normalizeWorkflowStatus(legacyMetadata.status);
+  const briefContext = existingBrief?.context || {
+    type: "forge/brief",
+    version: 1,
+    outcome,
+    definitionOfDone,
+    context: context === "To be defined" ? "" : context,
+    scope: { in: [], out: [] },
+    constraints: [],
+    affectedPaths: asStringList(legacyMetadata.agent?.affectedPaths),
+    migratedFrom: sources,
+  };
+  const memoryContext = existingMemory?.context || {
+    type: "forge/memory",
+    version: 1,
+    updated: now,
+    status,
+    progress,
+    nextAction,
+    blockers,
+    openQuestions,
+    decisions: [],
+    migratedFrom: sources,
+  };
+  const metadata = createWorkflowMetadata({
+    ...legacyMetadata,
+    status,
+    phase: normalizeWorkflowPhase(legacyMetadata.phase, status),
+    displayName: legacyMetadata.displayName || title || legacyMetadata.name,
+    description: legacyMetadata.description || context,
+    goal: outcome,
+  }, briefContext, memoryContext);
+  metadata.migration = {
+    fromSchemaVersion: legacyMetadata.schemaVersion || 1,
+    plannedAt: now,
+    sources,
+  };
+
+  if (sources.length === 0) {
+    warnings.push("No legacy Markdown sources were found; migration relies on metadata only.");
+  }
+  if (existingBrief) warnings.push("Existing valid brief.md will be preserved.");
+  if (existingMemory) warnings.push("Existing valid memory.md will be preserved.");
+
+  return {
+    initiativeName: legacyMetadata.name,
+    alreadyCurrent: false,
+    canMigrate: conflicts.length === 0,
+    conflicts,
+    warnings,
+    sources,
+    creates: [
+      ...(existingBrief ? [] : [WORKFLOW_DOCUMENTS.brief]),
+      ...(existingMemory ? [] : [WORKFLOW_DOCUMENTS.memory]),
+      ...(!existsSync(join(initPath, WORKFLOW_DOCUMENTS.outputs)) ? [WORKFLOW_DOCUMENTS.outputs] : []),
+      ...(!existsSync(join(initPath, ".forge", "sessions.log")) ? [".forge/sessions.log"] : []),
+    ],
+    preserves: sources,
+    preview: {
+      legacyMetadata,
+      metadata,
+      brief: { context: briefContext, body: "# Brief\n\nReview this migrated brief before relying on it." },
+      memory: { context: memoryContext, body: "# Memory\n\n## Migration\n\nReview required: this context was derived from legacy Forge records." },
+      existingBrief: Boolean(existingBrief),
+      existingMemory: Boolean(existingMemory),
+    },
+  };
+}
+
+function nextMigrationBackupPath(initPath) {
+  const forgePath = join(initPath, ".forge");
+  const base = join(forgePath, "metadata.pre-v2.json");
+  if (!existsSync(base)) return base;
+
+  let counter = 2;
+  while (existsSync(join(forgePath, `metadata.pre-v2-${counter}.json`))) counter += 1;
+  return join(forgePath, `metadata.pre-v2-${counter}.json`);
+}
+
+function applyLegacyMigration(initPath) {
+  const plan = planLegacyMigration(initPath);
+  if (plan.alreadyCurrent) throw new Error("Initiative already uses the Forge workflow record");
+  if (!plan.canMigrate) {
+    throw new Error(`Migration blocked: ${plan.conflicts.join("; ")}`);
+  }
+
+  const metadataPath = join(initPath, ".forge", "metadata.json");
+  const backupPath = nextMigrationBackupPath(initPath);
+  writeFileAtomically(backupPath, readFileSync(metadataPath, "utf8"));
+  mkdirSync(join(initPath, WORKFLOW_DOCUMENTS.outputs), { recursive: true });
+  const sessionsLogPath = join(initPath, ".forge", "sessions.log");
+  if (!existsSync(sessionsLogPath)) writeFileAtomically(sessionsLogPath, "");
+
+  if (!plan.preview.existingBrief) {
+    writeFileAtomically(
+      join(initPath, WORKFLOW_DOCUMENTS.brief),
+      createForgeContextDocument(plan.preview.brief.context, plan.preview.brief.body)
+    );
+  }
+  if (!plan.preview.existingMemory) {
+    writeFileAtomically(
+      join(initPath, WORKFLOW_DOCUMENTS.memory),
+      createForgeContextDocument(plan.preview.memory.context, plan.preview.memory.body)
+    );
+  }
+
+  const metadata = {
+    ...plan.preview.metadata,
+    migration: {
+      ...plan.preview.metadata.migration,
+      migratedAt: new Date().toISOString(),
+    },
+  };
+  delete metadata.migration.plannedAt;
+  validateWorkflowMetadata(metadata);
+  writeFileAtomically(metadataPath, JSON.stringify(metadata, null, 2));
+  return { metadata, backupPath, created: plan.creates, preserved: plan.preserves };
+}
+
+function formatMigrationPlan(plan) {
+  if (plan.alreadyCurrent) return `✓ ${plan.initiativeName} already uses workflow schema v2.`;
+  const lines = [
+    `🔄 Migration preview: ${plan.initiativeName}`,
+    `Status: ${plan.canMigrate ? "ready" : "blocked"}`,
+    `Create: ${plan.creates.length ? plan.creates.join(", ") : "no new workflow files"}`,
+    `Preserve: ${plan.preserves.length ? plan.preserves.join(", ") : "metadata only"}`,
+    "Backup: .forge/metadata.pre-v2*.json",
+  ];
+  if (plan.preview) {
+    lines.push(`Outcome: ${plan.preview.brief.context.outcome}`);
+    lines.push(`Next action: ${plan.preview.memory.context.nextAction}`);
+  }
+  if (plan.warnings.length) lines.push(`Warnings: ${plan.warnings.join(" | ")}`);
+  if (plan.conflicts.length) lines.push(`Conflicts: ${plan.conflicts.join(" | ")}`);
+  return lines.join("\n");
+}
+
 module.exports = {
   INITIATIVES_DIR,
   ensureInitiativesDir,
@@ -598,4 +870,8 @@ module.exports = {
   readWorkflowRecord,
   updateWorkflowMemory,
   updateWorkflowBrief,
+  isWorkflowInitiative,
+  planLegacyMigration,
+  applyLegacyMigration,
+  formatMigrationPlan,
 };

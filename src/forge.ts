@@ -3,13 +3,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   INITIATIVES_DIR,
+  applyLegacyMigration,
   createWorkSession,
   createWorkflowRecord,
   ensureInitiativesDir,
   getRecentSessions,
   formatInitiativeLabel,
   formatInitiativeSummary,
+  formatMigrationPlan,
+  isWorkflowInitiative,
   listInitiatives,
+  planLegacyMigration,
   readJSON,
 } from "./initiative-store.js";
 
@@ -170,7 +174,9 @@ async function mainWorkflow(
   if (!selectedInitiative) return;
 
   // Step 2: Show initiative summary
-  const initPath = join(INITIATIVES_DIR, selectedInitiative.name);
+  const initPath = currentInitiative?.metadata.name === selectedInitiative.name
+    ? currentInitiative.path
+    : join(INITIATIVES_DIR, selectedInitiative.name);
   const metadata = readJSON(join(initPath, ".forge", "metadata.json")) as InitiativeMetadata;
 
   if (!currentInitiative && resolve(initPath) !== resolve(process.cwd())) {
@@ -190,7 +196,9 @@ async function mainWorkflow(
     "info"
   );
 
+  const legacyInitiative = !isWorkflowInitiative(initPath);
   const actionOptions = [
+    ...(legacyInitiative ? ["🔄 Preview workflow migration"] : []),
     "➕ Start a new session",
     ...(recentSessions.length > 0
       ? ["▶️ Resume a recent session", ...recentSessions.slice(0, 5).map((s) => `     ${s}`)]
@@ -202,7 +210,9 @@ async function mainWorkflow(
   const action = await ctx.ui.select(`🔨 ${metadata.displayName} · What next?`, actionOptions);
   if (!action) return;
 
-  if (action === "➕ Start a new session") {
+  if (action === "🔄 Preview workflow migration") {
+    await migrateInitiativeFlow(initPath, ctx);
+  } else if (action === "➕ Start a new session") {
     await createSessionFlow(initPath, metadata, ctx, pi);
   } else if (action === "▶️ Resume a recent session") {
     // Show selection of which session to resume
@@ -219,6 +229,24 @@ async function mainWorkflow(
   } else if (action === "← All initiatives") {
     await mainWorkflow(ctx, pi, forgeState);
   }
+}
+
+async function migrateInitiativeFlow(
+  initPath: string,
+  ctx: ExtensionCommandContext
+) {
+  const plan = planLegacyMigration(initPath);
+  ctx.ui.notify(formatMigrationPlan(plan), plan.canMigrate ? "info" : "error");
+  if (plan.alreadyCurrent || !plan.canMigrate) return;
+
+  const confirmed = await ctx.ui.confirm(
+    "Migrate legacy initiative?",
+    "This creates brief.md and memory.md, backs up metadata, and preserves all legacy files."
+  );
+  if (!confirmed) return;
+
+  const result = applyLegacyMigration(initPath);
+  ctx.ui.notify(`✓ Migration complete\nBackup: ${result.backupPath}`, "success");
 }
 
 async function createInitiativeFlow(

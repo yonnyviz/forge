@@ -8,13 +8,16 @@ const { join, resolve } = require("node:path");
 const { existsSync, readFileSync, readdirSync, statSync } = require("node:fs");
 const {
   INITIATIVES_DIR,
+  applyLegacyMigration,
   createWorkflowRecord,
   createWorkSession,
   ensureInitiativesDir,
   formatInitiativeLabel,
   formatInitiativeSummary,
+  formatMigrationPlan,
   getRecentSessions,
   listInitiatives,
+  planLegacyMigration,
 } = require("../src/initiative-store.js");
 
 function getPiSessionDir(cwd) {
@@ -158,8 +161,32 @@ async function main() {
       await launchNamedInitiative(args[1], args[2], rl);
       return;
     }
+    if (args[0] === "migrate") {
+      const initiativeName = args[1];
+      const options = new Set(args.slice(2));
+      if (!initiativeName || [...options].some((option) => option !== "--dry-run")) {
+        throw new Error("Usage: forge migrate <initiative-name> [--dry-run]");
+      }
+      const initiative = listInitiatives().find((item) => item.name === initiativeName);
+      if (!initiative) throw new Error(`Initiative '${initiativeName}' was not found`);
+      const initiativePath = join(INITIATIVES_DIR, initiativeName);
+      const plan = planLegacyMigration(initiativePath);
+      stdout.write(`${formatMigrationPlan(plan)}\n`);
+      if (options.has("--dry-run") || plan.alreadyCurrent || !plan.canMigrate) return;
+
+      const confirmation = (await rl.question("Apply this non-destructive migration? [y/N]: "))
+        .trim()
+        .toLowerCase();
+      if (confirmation !== "y" && confirmation !== "yes") {
+        stdout.write("Migration cancelled.\n");
+        return;
+      }
+      const result = applyLegacyMigration(initiativePath);
+      stdout.write(`✓ Migration complete. Metadata backup: ${result.backupPath}\n`);
+      return;
+    }
     if (args.length > 0) {
-      throw new Error("Usage: forge [launch <initiative-name> [session-folder]]");
+      throw new Error("Usage: forge [launch <initiative-name> [session-folder] | migrate <initiative-name> [--dry-run]]");
     }
 
     const initiatives = listInitiatives().sort(
