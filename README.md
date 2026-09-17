@@ -86,6 +86,25 @@ For example, `forge-implementation` and a Forge session folder named `2026-09-16
 
 The Forge CLI waits while Pi is open and returns when Pi exits. Set `FORGE_PI_BIN` to use a different Pi executable while testing, for example `FORGE_PI_BIN=/path/to/pi forge`.
 
+## Dashboard (M4 / V1)
+
+Start the local read-only dashboard from either launch surface:
+
+```bash
+forge dashboard start
+forge dashboard status
+forge dashboard open
+forge dashboard stop
+```
+
+Pi supports the matching `/forge dashboard ...` commands. The dashboard includes responsive overviews, safe read-only content navigation, Markdown rendering, milestone/decision summaries, durable session activity, automatic five-second refresh polling, and light/dark/reduced-motion support. Configuration, the optional front matter contract, safe file access, release behavior, and V1 limitations are documented in [docs/DASHBOARD.md](./docs/DASHBOARD.md).
+
+Run the release checks locally:
+
+```sh
+npm run verify
+```
+
 ## How It Works
 
 Pi's extension discovery system finds extensions from:

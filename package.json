@@ -2,6 +2,11 @@
   "name": "forge-ts-extension",
   "version": "0.0.1",
   "description": "Initiative and work session management extension and Pi launcher",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/dashboard-store.js && node --check src/dashboard-server.js && node -e 'const fs=require(\"node:fs\"),vm=require(\"node:vm\");const html=fs.readFileSync(\"src/dashboard.html\",\"utf8\");new vm.Script(html.split(\"<script>\")[1].split(\"</script>\")[0]);'",
+    "verify": "npm run check && npm test"
+  },
   "bin": {
     "forge": "./bin/forge.js"
   },

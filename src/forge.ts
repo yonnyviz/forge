@@ -11,6 +11,12 @@ import {
   listInitiatives,
   readJSON,
 } from "./initiative-store.js";
+import {
+  openDashboard,
+  startDashboard,
+  statusDashboard,
+  stopDashboard,
+} from "./dashboard-lifecycle.js";
 
 interface InitiativeMetadata {
   name: string;
@@ -55,12 +61,15 @@ export default function (pi: ExtensionAPI) {
 
   // Single command: /forge
   pi.registerCommand("forge", {
-    description: "Manage initiatives and work sessions",
+    description: "Manage initiatives, work sessions, and the dashboard",
     handler: async (args, ctx) => {
       try {
+        const commandArgs = args?.trim() || "";
+        if (/^dashboard(?:\s|$)/.test(commandArgs)) {
+          await dashboardCommand(commandArgs.split(/\s+/).slice(1), ctx);
+          return;
+        }
         ensureInitiativesDir();
-
-        // Ignore any subcommand args - always run the smart workflow
         await mainWorkflow(ctx, pi, forgeState);
       } catch (error) {
         ctx.ui.notify(
@@ -70,6 +79,29 @@ export default function (pi: ExtensionAPI) {
       }
     },
   });
+}
+
+async function dashboardCommand(parts: string[], ctx: ExtensionCommandContext) {
+  const command = parts[0];
+  if (!["start", "stop", "status", "open"].includes(command)) {
+    throw new Error("Usage: /forge dashboard <start|stop|status|open>");
+  }
+  const result = command === "start"
+    ? await startDashboard()
+    : command === "stop"
+      ? await stopDashboard()
+      : command === "open"
+        ? await openDashboard()
+        : await statusDashboard();
+
+  if (result.state === "running") {
+    ctx.ui.notify(
+      `Forge dashboard ${result.reused ? "already running" : "started"}: ${result.url}`,
+      "info"
+    );
+  } else {
+    ctx.ui.notify(`Forge dashboard: ${result.state}`, result.state === "failed" ? "error" : "info");
+  }
 }
 
 function isValidKebabCase(name: string): boolean {

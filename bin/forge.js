@@ -16,6 +16,12 @@ const {
   getRecentSessions,
   listInitiatives,
 } = require("../src/initiative-store.js");
+const {
+  openDashboard,
+  startDashboard,
+  statusDashboard,
+  stopDashboard,
+} = require("../src/dashboard-lifecycle.js");
 
 function getPiSessionDir(cwd) {
   const sessionRoot =
@@ -93,7 +99,45 @@ async function createInitiativeFlow(rl) {
   return metadata;
 }
 
+function printDashboardResult(command, result) {
+  if (command === "status") {
+    if (result.state === "running") {
+      stdout.write(`Forge dashboard: running\nURL: ${result.url}\nPID: ${result.record.pid}\n`);
+    } else {
+      stdout.write(`Forge dashboard: ${result.state}\n`);
+    }
+    return;
+  }
+  const messages = {
+    running: result.reused ? "Forge dashboard already running" : "Forge dashboard started",
+    stopped: "Forge dashboard stopped",
+    "already-stopped": "Forge dashboard already stopped",
+    "stale-record": "Forge dashboard record was stale; no process was stopped",
+  };
+  stdout.write(`${messages[result.state] || `Forge dashboard: ${result.state}`}\n`);
+  if (result.url) stdout.write(`URL: ${result.url}\n`);
+}
+
+async function dashboardCommand(command) {
+  if (!["start", "stop", "status", "open"].includes(command)) {
+    throw new Error("Usage: forge dashboard <start|stop|status|open>");
+  }
+  const result = command === "start"
+    ? await startDashboard()
+    : command === "stop"
+      ? await stopDashboard()
+      : command === "open"
+        ? await openDashboard()
+        : await statusDashboard();
+  printDashboardResult(command, result);
+}
+
 async function main() {
+  const args = process.argv.slice(2);
+  if (args[0] === "dashboard") {
+    await dashboardCommand(args[1]);
+    return;
+  }
   ensureInitiativesDir();
   const initiatives = listInitiatives().sort(
     (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
