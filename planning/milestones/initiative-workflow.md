@@ -105,6 +105,14 @@ A quick, one-session task should remain in the Pi conversation or an optional si
 
 Existing Forge initiatives continue to use `.forge/metadata.json` for discovery. If `brief.md` and `memory.md` do not exist, Forge treats the initiative as legacy and can offer an explicit, non-destructive migration based on existing metadata, README, `.claude.md`, and recent sessions.
 
+### D7: An active Pi process cannot switch initiative roots
+
+Pi's working directory is fixed for the lifetime of a process. `/forge` may manage records for another initiative, but it must not imply that the current agent has moved there.
+
+The Forge CLI is the workspace-switch boundary: it starts or resumes a Pi process with the chosen initiative root as its working directory. The in-Pi extension supports only the initiative rooted at the current Pi working directory; when a user selects another initiative, it must offer an explicit handoff with the exact CLI command to launch after exiting Pi.
+
+Forge state and the status bar must represent the initiative associated with the current working directory, not the last initiative selected in a menu.
+
 ## Agent resume protocol
 
 When opening a persistent initiative, Forge should:
@@ -134,8 +142,10 @@ A file format alone does not add context to an agent session. The extension and 
 - [ ] Add a quick-task path with no required persistent initiative record.
 - [ ] Create the minimal persistent structure only when continuity is selected.
 - [ ] Reuse the same shared creation API in `src/forge.ts` and `bin/forge.js`.
+- [ ] Keep `/forge` scoped to the current Pi working directory; do not mark another selected initiative as active.
+- [ ] Add a non-interactive CLI launch form that can reopen a named initiative/session from an in-Pi handoff.
 
-**Done when:** the CLI and Pi extension produce equivalent persistent records and neither creates planning/ADR scaffolding by default.
+**Done when:** the CLI and Pi extension produce equivalent persistent records, neither creates planning/ADR scaffolding by default, and switching roots always launches a separate Pi process.
 
 ## Milestone 3: Context-first resume and lifecycle
 
