@@ -78,8 +78,10 @@ For local development, run `npm link` in this repository once, then use `forge`.
 1. `forge` lists initiatives from `FORGE_INITIATIVES_DIR`.
 2. You select an initiative and give the work session a name.
 3. Forge creates `sessions/YYYY-MM-DD_name/notes.md`, updates `.forge/metadata.json`, and logs the session.
-4. Forge starts `pi --name "your-session-name"` with the initiative root as Pi's working directory.
+4. Forge starts Pi in the initiative root with a deterministic display name: `initiative-name — YYYY-MM-DD_session-name`.
 5. Pi performs its usual context discovery and saves its own session under that working directory.
+
+For example, `forge-implementation` and a Forge session folder named `2026-09-16_cli-launcher` produce the Pi session name `forge-implementation — 2026-09-16_cli-launcher`.
 
 The Forge CLI waits while Pi is open and returns when Pi exits. Set `FORGE_PI_BIN` to use a different Pi executable while testing, for example `FORGE_PI_BIN=/path/to/pi forge`.
 

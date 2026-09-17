@@ -39,12 +39,14 @@ async function main() {
     const initiative = initiatives[index];
     const initiativePath = join(INITIATIVES_DIR, initiative.name);
     const { sessionFolder } = createWorkSession(initiativePath, initiative, name);
+    const piSessionName = `${initiative.name} — ${sessionFolder}`;
 
     stdout.write(`\n✓ Created Forge session: ${sessionFolder}\n`);
+    stdout.write(`🏷️ Pi session: ${piSessionName}\n`);
     stdout.write(`🚀 Starting Pi in ${initiativePath}\n\n`);
 
     const piBin = process.env.FORGE_PI_BIN || "pi";
-    const child = spawn(piBin, ["--name", name], {
+    const child = spawn(piBin, ["--name", piSessionName], {
       cwd: initiativePath,
       stdio: "inherit",
     });
