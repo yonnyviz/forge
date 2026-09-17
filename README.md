@@ -8,12 +8,12 @@ Pi discovers this extension automatically via the git package system. No manual 
 
 ### 1. Add Git Package to Pi Settings
 
-Edit `~/.pi/agent/settings.json` and add the worklog repository:
+Edit `~/.pi/agent/settings.json` and add the Forge repository:
 
 ```json
 {
   "packages": [
-    "git:github.com/yonnyviz/worklog@main"
+    "git:github.com/yonnyviz/forge@main"
   ]
 }
 ```
@@ -28,7 +28,7 @@ Inside Pi, run:
 ```
 
 Pi will:
-- Fetch the worklog repository
+- Fetch the Forge repository
 - Read `package.json` to find the extension entry point
 - Auto-discover and load `src/forge.ts`
 - Register the `/forge` command
@@ -59,6 +59,32 @@ FORGE_INITIATIVES_DIR=$HOME/my-initiatives pi
 Run `/forge` to open the main workflow menu. If successful, you'll see the initiative selection prompt.
 
 ---
+
+## Launch Pi for an Initiative
+
+The Forge CLI is the recommended way to begin or resume work. It starts a **normal Pi process** in the selected initiative directory; it does not try to change the working directory of an already-running Pi process.
+
+Install the CLI separately from the Pi git package:
+
+```bash
+npm install -g git+https://github.com/yonnyviz/forge.git
+forge
+```
+
+For local development, run `npm link` in this repository once, then use `forge`.
+
+### Launcher flow
+
+1. `forge` lists initiatives from `FORGE_INITIATIVES_DIR`.
+2. You select an initiative.
+3. Forge lets you create a new work session or select an existing one.
+4. New sessions create `sessions/YYYY-MM-DD_name/notes.md`, update `.forge/metadata.json`, and get logged.
+5. Forge starts Pi in the initiative root with a deterministic display name: `initiative-name — YYYY-MM-DD_session-name` and a stable session ID.
+6. Selecting an existing session reopens the same Pi session instead of creating a duplicate.
+
+For example, `forge-implementation` and a Forge session folder named `2026-09-16_cli-launcher` produce the Pi session name `forge-implementation — 2026-09-16_cli-launcher`.
+
+The Forge CLI waits while Pi is open and returns when Pi exits. Set `FORGE_PI_BIN` to use a different Pi executable while testing, for example `FORGE_PI_BIN=/path/to/pi forge`.
 
 ## How It Works
 
@@ -119,7 +145,7 @@ This opens the main workflow menu with options to:
 **Folder structure created:**
 ```
 my-project/
-├── .worklog/
+├── .forge/
 │   ├── metadata.json
 │   └── sessions.log
 ├── sessions/
@@ -138,6 +164,8 @@ my-project/
 4. Optionally name your Pi session
 5. A `notes.md` template is created in `sessions/YYYY-MM-DD_name/`
 
+> To launch a separate Pi instance rooted at the initiative directory, use the `forge` CLI described above.
+
 ### Resume Session
 
 1. Select an initiative
@@ -154,7 +182,7 @@ my-project/
 
 ## File Structure
 
-- **`.worklog/metadata.json`** - Initiative metadata (status, phase, owner, tags, session count)
+- **`.forge/metadata.json`** - Initiative metadata (status, phase, owner, tags, session count)
 - **`.claude.md`** - Navigation and context for Claude
 - **`README.md`** - Public initiative overview
 - **`planning/ROADMAP.md`** - Milestone index and dependencies
