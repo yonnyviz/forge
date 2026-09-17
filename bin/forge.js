@@ -109,6 +109,11 @@ async function main() {
     const piArgs = existingPiSession
       ? ["--session", existingPiSession, "--name", piSessionName]
       : ["--session-id", sessionFolder, "--name", piSessionName];
+    // Release stdin before handing the terminal to Pi. Keeping readline active
+    // here can consume keystrokes intended for Pi's TUI editor.
+    rl.close();
+    stdin.pause();
+
     const child = spawn(piBin, piArgs, {
       cwd: initiativePath,
       stdio: "inherit",
