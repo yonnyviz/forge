@@ -13,6 +13,8 @@ import {
   formatMigrationPlan,
   isWorkflowInitiative,
   listInitiatives,
+  suggestInitiativeName,
+  toKebabCase,
   planLegacyMigration,
   readJSON,
 } from "./initiative-store.js";
@@ -90,15 +92,6 @@ export default function (pi: ExtensionAPI) {
 
 function isValidKebabCase(name: string): boolean {
   return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(name);
-}
-
-function toKebabCase(str: string): string {
-  return str
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
 }
 
 function getCurrentInitiative(): { path: string; metadata: InitiativeMetadata } | null {
@@ -254,22 +247,21 @@ async function createInitiativeFlow(
   pi: ExtensionAPI,
   forgeState: ForgeState
 ) {
-  const outcome = await ctx.ui.input(
-    "What outcome do you want, and what makes it done?",
-    ""
-  );
-  if (!outcome.trim()) {
+  const about = await ctx.ui.input("What is this initiative about?", "");
+  if (!about.trim()) {
     ctx.ui.notify("Cancelled", "info");
     return;
   }
 
-  const context = (await ctx.ui.input(
-    "What context, constraints, inputs, prior decisions, or paths matter?",
-    ""
-  )) || "";
-  const suggestedName = toKebabCase(outcome) || "initiative";
+  const goal = await ctx.ui.input("What is the intended goal?", "");
+  if (!goal.trim()) {
+    ctx.ui.notify("Cancelled", "info");
+    return;
+  }
+
+  const suggestedName = suggestInitiativeName(about, goal);
   let initName = (await ctx.ui.input(
-    "Initiative name (kebab-case):",
+    "Initiative name (short kebab-case):",
     suggestedName
   )).trim();
   if (!initName) {
@@ -295,10 +287,10 @@ async function createInitiativeFlow(
 
   const { metadata } = createWorkflowRecord(initPath, {
     name: initName,
-    displayName: outcome.trim(),
-    description: context || outcome.trim(),
-    goal: outcome.trim(),
-    context,
+    displayName: about.trim(),
+    description: about.trim(),
+    goal: goal.trim(),
+    context: about.trim(),
     phase: "planning",
   });
 

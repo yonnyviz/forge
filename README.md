@@ -148,8 +148,8 @@ This opens the main workflow menu with options to:
 
 1. Run `/forge` or `forge`
 2. Select persistent initiative creation
-3. Describe the outcome, definition of done, and relevant context or constraints
-4. Confirm the suggested kebab-case name
+3. Describe what the initiative is about and its intended goal
+4. Confirm the short suggested kebab-case name
 5. Optionally create the first session
 
 Forge creates a compact record with `brief.md`, `memory.md`, and an agent-oriented metadata index. It does not create planning, milestone, ADR, or artifact scaffolding by default.

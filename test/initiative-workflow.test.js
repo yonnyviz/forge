@@ -10,6 +10,7 @@ const {
   parseForgeContextDocument,
   planLegacyMigration,
   readWorkflowRecord,
+  suggestInitiativeName,
   updateWorkflowBrief,
   updateWorkflowMemory,
   validateWorkflowMetadata,
@@ -139,6 +140,17 @@ test("rejects invalid metadata document locations", () => {
   } finally {
     rmSync(initPath, { recursive: true, force: true });
   }
+});
+
+test("generates concise initiative names", () => {
+  const name = suggestInitiativeName(
+    "Build a comprehensive customer identity and access management platform",
+    "Enable secure account access"
+  );
+
+  assert.equal(name, "build-comprehensive-customer");
+  assert.ok(name.length <= 32);
+  assert.match(name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 });
 
 test("requires the bounded JSON context block", () => {

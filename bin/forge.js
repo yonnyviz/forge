@@ -18,6 +18,8 @@ const {
   getRecentSessions,
   listInitiatives,
   planLegacyMigration,
+  suggestInitiativeName,
+  toKebabCase,
 } = require("../src/initiative-store.js");
 
 function getPiSessionDir(cwd) {
@@ -48,24 +50,14 @@ function findNamedPiSession(cwd, name) {
     });
 }
 
-function toKebabCase(value) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 async function createInitiativeFlow(rl) {
-  const outcome = (await rl.question("What outcome do you want, and what makes it done? ")).trim();
-  if (!outcome) throw new Error("An outcome is required");
+  const about = (await rl.question("What is this initiative about? ")).trim();
+  if (!about) throw new Error("An initiative description is required");
 
-  const context = (await rl.question(
-    "What context, constraints, inputs, prior decisions, or paths matter? "
-  )).trim();
-  const suggestedName = toKebabCase(outcome) || "initiative";
+  const goal = (await rl.question("What is the intended goal? ")).trim();
+  if (!goal) throw new Error("An intended goal is required");
+
+  const suggestedName = suggestInitiativeName(about, goal);
   const requestedName = (await rl.question(`Initiative name [${suggestedName}]: `)).trim();
   const initName = toKebabCase(requestedName || suggestedName);
   if (!initName) throw new Error("An initiative name is required");
@@ -75,10 +67,10 @@ async function createInitiativeFlow(rl) {
 
   const { metadata } = createWorkflowRecord(initPath, {
     name: initName,
-    displayName: outcome,
-    description: context || outcome,
-    goal: outcome,
-    context,
+    displayName: about,
+    description: about,
+    goal,
+    context: about,
     phase: "planning",
   });
   stdout.write(`✓ Initiative created: ${metadata.displayName}\n`);

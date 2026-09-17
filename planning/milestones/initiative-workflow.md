@@ -113,6 +113,10 @@ The Forge CLI is the workspace-switch boundary: it starts or resumes a Pi proces
 
 Forge state and the status bar must represent the initiative associated with the current working directory, not the last initiative selected in a menu.
 
+### D8: Intake stays high-level and generated names stay short
+
+Initiative creation asks for only a high-level description and intended goal before suggesting a name. Forge derives a concise default identifier from up to three meaningful words, removes common stop words, and caps the generated name at 32 characters. Users may still provide a custom kebab-case name.
+
 ## Agent resume protocol
 
 When opening a persistent initiative, Forge should:
@@ -137,8 +141,8 @@ A file format alone does not add context to an agent session. The extension and 
 
 ## Milestone 2: Proportionate creation flows
 
-- [x] Replace the current detail-heavy creation intake with outcome, context/constraints, and persistence expectation.
-- [x] Derive a slug from the outcome and allow confirmation.
+- [x] Replace the current detail-heavy creation intake with a high-level description and intended goal.
+- [x] Derive a short slug from the description and allow confirmation.
 - [x] Add a quick-task path with no required persistent initiative record.
 - [x] Create the minimal persistent structure only when continuity is selected.
 - [x] Reuse the same shared creation API in `src/forge.ts` and `bin/forge.js`.

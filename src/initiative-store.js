@@ -317,6 +317,27 @@ function asStringList(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 }
 
+function toKebabCase(value) {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function suggestInitiativeName(...values) {
+  const stopWords = new Set(["a", "an", "and", "for", "in", "of", "on", "or", "the", "to", "with"]);
+  const source = values.find((value) => typeof value === "string" && value.trim()) || "initiative";
+  const words = toKebabCase(source)
+    .split("-")
+    .filter((word) => word && !stopWords.has(word));
+  const selected = (words.length ? words : ["initiative"]).slice(0, 3);
+  let name = selected.join("-").slice(0, 32).replace(/-+$/, "");
+  return name || "initiative";
+}
+
 function writeFileAtomically(path, content) {
   const temporaryPath = `${path}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   try {
@@ -860,6 +881,8 @@ module.exports = {
   getRecentSessions,
   formatInitiativeLabel,
   formatInitiativeSummary,
+  toKebabCase,
+  suggestInitiativeName,
   createInitiative,
   createWorkSession,
   createForgeContextDocument,

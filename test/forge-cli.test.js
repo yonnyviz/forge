@@ -108,7 +108,7 @@ test("persistent CLI creation uses the minimal workflow record", async () => {
     );
     assert.equal(result.status, 0, result.stderr);
 
-    const initiativePath = join(state.root, "ship-the-workflow");
+    const initiativePath = join(state.root, "ship-workflow");
     assert.match(readFileSync(join(initiativePath, "brief.md"), "utf8"), /forge-context/);
     assert.match(readFileSync(join(initiativePath, "memory.md"), "utf8"), /forge-context/);
     assert.equal(require("node:fs").existsSync(join(initiativePath, "planning")), false);
