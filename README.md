@@ -51,7 +51,7 @@ Run `/forge` inside Pi to open the main workflow menu.
 2. Describe the goal → confirm the suggested kebab-case name
 3. Optionally start the first session
 
-Creates: `.forge/metadata.json`, `.forge/sessions.log`, `brief.md`, `memory.md`, `outputs/`
+Creates: `.forge/metadata.json`, `.forge/sessions.log`, `AGENTS.md`, `brief.md`, `memory.md`, `outputs/`
 (No planning/milestone/ADR scaffolding by default.)
 
 **Create a session**
@@ -182,11 +182,14 @@ FORGE_INITIATIVES_DIR="$HOME/initiatives" pi     # inline
 
 | Path | Purpose |
 |---|---|
+| `AGENTS.md` | **Pi context file:** workspace map, reading protocol, current state (auto-generated) |
 | `.forge/metadata.json` | Identity, status, timestamps, document pointers, agent resume index |
 | `brief.md` | Outcome, definition of done, scope, constraints, affected paths |
 | `memory.md` | Durable context, decisions, progress, open questions, next action |
 | `outputs/` | Useful handoff/delivery artifacts |
 | `sessions/YYYY-MM-DD_name/` | Optional session chronology and notes |
+
+**AGENTS.md** is automatically loaded by Pi from the current directory at startup, so any agent launched inside an initiative gets the workspace guide without needing to invoke `/forge`. The file is fenced by `<!-- forge:agents-guide start/end -->` markers; user-written prose outside those markers is preserved. Regenerate it via `/forge` → **📄 Refresh AGENTS.md**.
 
 Legacy initiatives may also contain `.claude.md`, `README.md`, planning files, and ADRs — these remain supported.
 

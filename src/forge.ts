@@ -19,6 +19,7 @@ import {
   toKebabCase,
   planLegacyMigration,
   readJSON,
+  syncAgentsGuide,
 } from "./initiative-store.js";
 
 interface InitiativeMetadata {
@@ -312,6 +313,7 @@ async function mainWorkflow(
   const legacyInitiative = !isWorkflowInitiative(initPath);
   const actionOptions = [
     ...(legacyInitiative ? ["🔄 Preview workflow migration"] : []),
+    ...(!legacyInitiative ? ["📄 Refresh AGENTS.md"] : []),
     "➕ Start a new session",
     ...(recentSessions.length > 0
       ? ["▶️ Resume a recent session", ...recentSessions.slice(0, 5).map((s) => `     ${s}`)]
@@ -325,6 +327,16 @@ async function mainWorkflow(
 
   if (action === "🔄 Preview workflow migration") {
     await migrateInitiativeFlow(initPath, ctx);
+  } else if (action === "📄 Refresh AGENTS.md") {
+    try {
+      const path = syncAgentsGuide(initPath);
+      ctx.ui.notify(`✓ Refreshed ${path}`, "info");
+    } catch (error) {
+      ctx.ui.notify(
+        `Error refreshing AGENTS.md: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "error"
+      );
+    }
   } else if (action === "➕ Start a new session") {
     await createSessionFlow(initPath, metadata, ctx, pi);
   } else if (action === "▶️ Resume a recent session") {
