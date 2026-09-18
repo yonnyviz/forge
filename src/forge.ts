@@ -2,7 +2,9 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import {
+const initiativeStore = require("./initiative-store.js");
+
+const {
   INITIATIVES_DIR,
   applyLegacyMigration,
   createWorkSession,
@@ -20,7 +22,7 @@ import {
   planLegacyMigration,
   readJSON,
   syncAgentsGuide,
-} from "./initiative-store.js";
+} = initiativeStore;
 
 interface InitiativeMetadata {
   name: string;
