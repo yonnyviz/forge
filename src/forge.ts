@@ -352,18 +352,16 @@ async function createInitiativeFlow(
   });
 
   // This Pi process remains in its original directory. The new initiative is
-  // usable only after launching a new Pi process from its root.
-  ctx.ui.notify(
-    `✓ Initiative created: ${metadata.displayName}\n\nExit Pi, then run: forge launch ${initName}`,
-    "success"
+  ctx.ui.notify(`✓ Initiative created: ${metadata.displayName}`, "success");
+
+  const switchNow = await ctx.ui.confirm(
+    "Switch to it now?",
+    "Start a fresh Pi session in the new initiative, or stay in this conversation?"
   );
 
-  const startSession = await ctx.ui.confirm(
-    "Create first session?",
-    "Create its Forge session before launching it?"
-  );
-  if (startSession) {
-    await createSessionFlow(initPath, metadata, ctx, pi, false);
+  if (switchNow) {
+    await switchToInitiative(ctx, initPath, initName);
+  } else {
     ctx.ui.notify(`When ready, run: forge launch ${initName}`, "info");
   }
 }
