@@ -70,7 +70,7 @@ test("creates a minimal workflow record with an agent index", () => {
     assert.equal(result.metadata.agent.nextAction, "Add integration tests");
     assert.deepEqual(result.metadata.agent.affectedPaths, ["src/initiative-store.js"]);
     assert.deepEqual(readdirSync(initPath).sort(), [".forge", "AGENTS.md", "brief.md", "memory.md", "outputs"]);
-    assert.match(readFileSync(join(initPath, "AGENTS.md"), "utf8"), /forge:agents-guide start/);
+    assert.match(readFileSync(join(initPath, "AGENTS.md"), "utf8"), /Forge initiative workspace/);
     assert.equal(parseForgeContextDocument(readFileSync(join(initPath, "brief.md"), "utf8"), "forge/brief").context.outcome, "Ship compact workflow records");
   } finally {
     rmSync(initPath, { recursive: true, force: true });
