@@ -989,6 +989,107 @@ function formatMigrationPlan(plan) {
   return lines.join("\n");
 }
 
+function generateCompletionFile(initPath, metadata, completionNotes = "") {
+  const briefPath = join(initPath, WORKFLOW_DOCUMENTS.brief);
+  const memoryPath = join(initPath, WORKFLOW_DOCUMENTS.memory);
+  const outputsPath = join(initPath, WORKFLOW_DOCUMENTS.outputs);
+  const completionPath = join(initPath, ".forge", "completion.md");
+
+  // Extract DoD items from brief
+  let doDItems = [];
+  if (existsSync(briefPath)) {
+    const briefContent = readFileSync(briefPath, "utf8");
+    const doDMatch = briefContent.match(/## ✅ Definition of Done([\s\S]*?)(?=##|$)/);
+    if (doDMatch) {
+      const doDSection = doDMatch[1];
+      const items = doDSection.match(/- \[([ x])\] (.+)/g) || [];
+      doDItems = items.map((line) => {
+        const match = line.match(/- \[([x ])\] (.+)/);
+        return { checked: match[1] === "x", text: match[2] };
+      });
+    }
+  }
+
+  // Extract key decisions from memory
+  let decisions = [];
+  if (existsSync(memoryPath)) {
+    const memoryContent = readFileSync(memoryPath, "utf8");
+    const decisionsMatch = memoryContent.match(/## Decisions\n([\s\S]*?)(?=##|$)/);
+    if (decisionsMatch) {
+      const decisionsSection = decisionsMatch[1];
+      const items = decisionsSection.match(/- .+/g) || [];
+      decisions = items.map((line) => line.replace(/^- /, "").trim());
+    }
+  }
+
+  // List deliverables from outputs/
+  let deliverables = [];
+  if (existsSync(outputsPath)) {
+    const walkDir = (dir, relativePath = "") => {
+      readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
+        if (entry.name.startsWith(".")) return;
+        const fullPath = join(dir, entry.name);
+        const relPath = relativePath ? join(relativePath, entry.name) : entry.name;
+        if (entry.isDirectory()) {
+          walkDir(fullPath, relPath);
+        } else {
+          deliverables.push(relPath);
+        }
+      });
+    };
+    walkDir(outputsPath);
+  }
+
+  // Calculate duration from metadata
+  const created = new Date(metadata.created);
+  const completed = new Date();
+  const durationDays = Math.ceil(
+    (completed.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  const durationLabel = durationDays === 0 ? "<1 day" : `${durationDays} day${durationDays > 1 ? "s" : ""}`;
+
+  // Generate completion.md
+  const doDLines = doDItems
+    .map((item) => `- ${item.checked ? "✅" : "⭕"} ${item.text}`)
+    .join("\n");
+
+  const deliverableLines = deliverables.length
+    ? deliverables.map((d) => `- ${d}`).join("\n")
+    : "- None";
+
+  const decisionLines = decisions.length
+    ? decisions.map((d) => `- ${d}`).join("\n")
+    : "- None recorded";
+
+  const notesSection = completionNotes
+    ? `## 📝 Completion Notes\n${completionNotes}\n\n`
+    : "";
+
+  const completionContent = `# Initiative Completed: ${metadata.displayName}
+
+**Completed:** ${completed.toISOString().split("T")[0]}
+**Duration:** ${durationLabel}
+**Final Status:** ${metadata.status}/${metadata.phase}
+**Owner:** ${metadata.owner}
+
+## ✅ Definition of Done
+${doDLines}
+
+## 📦 Deliverables
+${deliverableLines}
+
+## 🎯 Key Decisions
+${decisionLines}
+
+${notesSection}---
+
+*Generated at ${completed.toISOString()}*
+`;
+
+  writeFileSync(completionPath, completionContent);
+  return completionPath;
+}
+
 module.exports = {
   INITIATIVES_DIR,
   ensureInitiativesDir,
@@ -1017,4 +1118,5 @@ module.exports = {
   planLegacyMigration,
   applyLegacyMigration,
   formatMigrationPlan,
+  generateCompletionFile,
 };

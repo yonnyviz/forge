@@ -22,6 +22,7 @@ const {
   planLegacyMigration,
   readJSON,
   syncAgentsGuide,
+  generateCompletionFile,
 } = initiativeStore;
 
 interface InitiativeMetadata {
@@ -695,6 +696,29 @@ async function updateStatusFlow(
   // Get progress summary
   const progress =
     (await ctx.ui.input("Recent progress summary:", "")) || "";
+
+  // If marking as completed, trigger completion workflow
+  if (metadata.status === "completed") {
+    const completionNotes = await ctx.ui.input(
+      "Add completion notes (optional):",
+      ""
+    );
+    
+    // Set phase to complete
+    metadata.phase = "complete";
+    
+    // Update metadata
+    metadata.lastUpdated = new Date().toISOString();
+    writeFileSync(join(initPath, ".forge", "metadata.json"), JSON.stringify(metadata, null, 2));
+    
+    // Generate completion file
+    const completionPath = generateCompletionFile(initPath, metadata, completionNotes);
+    ctx.ui.notify(
+      `✓ Initiative completed\n\n📄 Summary saved to: .forge/completion.md`,
+      "success"
+    );
+    return;
+  }
 
   // Update metadata
   metadata.lastUpdated = new Date().toISOString();

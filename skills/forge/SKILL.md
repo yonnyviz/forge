@@ -38,6 +38,33 @@ Propose a workspace checkpoint when any of these events occur:
 
 ---
 
+## Initiative Completion (Hybrid Trigger)
+
+When **all DoD items are ✅ complete**, suggest wrapping up the initiative:
+
+```
+🎉 All Definition of Done items complete!
+
+Ready to mark this initiative complete?
+  [yes] Mark complete & generate summary
+  [not yet] Keep working
+  [skip] Remind me later
+```
+
+If user selects **yes**:
+1. User is prompted for optional completion notes
+2. `.forge/completion.md` is auto-generated with:
+   - All DoD items (all checked ✅)
+   - Deliverables from outputs/
+   - Key decisions from memory.md
+   - User's completion notes
+3. Status → completed, phase → complete
+4. User sees: "✓ Initiative completed. Summary saved to .forge/completion.md"
+
+User can also manually trigger completion anytime via `/forge` → "Update initiative status" → "✓ Completed"
+
+---
+
 ## Natural Language Trigger Patterns
 
 Monitor conversation for these patterns. When detected with sufficient confidence, propose a memory checkpoint.
@@ -117,6 +144,11 @@ When user says "forge" followed by any of these command words, **immediately** p
 - Successfully fulfilling a user request fully
 - Multiple files changed + tests green
 - All immediate blockers resolved
+
+**Initiative completion detection:**
+- All DoD items are marked complete
+- → Automatically suggest: "Ready to mark this initiative complete?"
+- User confirms → generate completion summary
 
 ---
 
