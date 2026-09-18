@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
@@ -61,7 +62,7 @@ export default function (pi: ExtensionAPI) {
 
     // A restored selection is not valid if this Pi process is rooted
     // elsewhere. The working directory is the source of truth.
-    const currentInitiative = getCurrentInitiative();
+    const currentInitiative = getCurrentInitiative(ctx.cwd);
     forgeState.activeInitiative = currentInitiative?.metadata.name || null;
     forgeState.lastUpdated = new Date().toISOString();
     if (currentInitiative) {
@@ -94,8 +95,8 @@ function isValidKebabCase(name: string): boolean {
   return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(name);
 }
 
-function getCurrentInitiative(): { path: string; metadata: InitiativeMetadata } | null {
-  const path = process.cwd();
+function getCurrentInitiative(cwd: string): { path: string; metadata: InitiativeMetadata } | null {
+  const path = resolve(cwd);
   const metadataPath = join(path, ".forge", "metadata.json");
   if (!existsSync(metadataPath)) return null;
 
@@ -106,11 +107,65 @@ function getCurrentInitiative(): { path: string; metadata: InitiativeMetadata } 
   }
 }
 
-function notifyWorkspaceSwitch(ctx: ExtensionCommandContext, initiativeName: string) {
-  ctx.ui.notify(
-    `Pi cannot change its working directory while running. Exit Pi, then run: forge launch ${initiativeName}`,
-    "info"
-  );
+/**
+ * Switch the Pi session to an initiative directory (fresh session, no history).
+ * Pi never calls process.chdir; the session header `cwd` is the working directory.
+ */
+async function switchToInitiative(
+  ctx: ExtensionCommandContext,
+  initPath: string,
+  initiativeName: string
+): Promise<boolean> {
+  const target = resolve(initPath);
+
+  if (!existsSync(join(target, ".forge", "metadata.json"))) {
+    ctx.ui.notify(`Not a Forge initiative: ${target}`, "error");
+    return false;
+  }
+  if (resolve(ctx.cwd) === target) {
+    ctx.ui.notify(`Already in ${initiativeName}`, "info");
+    return false;
+  }
+
+  try {
+    await ctx.waitForIdle();
+
+    // Creates an in-memory session whose header cwd = target, and whose file path
+    // resolves to the default ~/.pi/agent/sessions/--<slug>--/ directory.
+    const sm = SessionManager.create(target);
+    const file = sm.getSessionFile();
+    const header = sm.getHeader();
+    if (!file || !header) {
+      ctx.ui.notify("Could not allocate a session file", "error");
+      return false;
+    }
+
+    // Pi does not flush the header until an assistant message exists, but
+    // switchSession() -> SessionManager.open() falls back to process.cwd() when
+    // the file is missing. Materialize the header so the cwd is authoritative.
+    if (!existsSync(file)) {
+      writeFileSync(file, `${JSON.stringify(header)}\n`, { flag: "wx" });
+    }
+
+    const { cancelled } = await ctx.switchSession(file, {
+      withSession: async (next) => {
+        next.ui.setStatus("forge", `🔨 ${initiativeName}`);
+        next.ui.notify(`🔨 Switched to ${initiativeName}\n${target}`, "success");
+      },
+    });
+
+    if (cancelled) {
+      ctx.ui.notify("Switch cancelled by another extension", "info");
+      return false;
+    }
+    return true;
+  } catch (error) {
+    ctx.ui.notify(
+      `Switch failed: ${error instanceof Error ? error.message : String(error)}`,
+      "error"
+    );
+    return false;
+  }
 }
 
 async function mainWorkflow(
@@ -118,8 +173,16 @@ async function mainWorkflow(
   pi: ExtensionAPI,
   forgeState: ForgeState
 ) {
-  const currentInitiative = getCurrentInitiative();
-  const initiatives = currentInitiative ? [currentInitiative.metadata] : listInitiatives();
+  const currentInitiative = getCurrentInitiative(ctx.cwd);
+  const initiatives = listInitiatives() as InitiativeMetadata[];
+  // An initiative rooted outside INITIATIVES_DIR is not returned by
+  // listInitiatives(); keep it selectable so it never disappears from the menu.
+  if (
+    currentInitiative &&
+    !initiatives.some((init) => init.name === currentInitiative.metadata.name)
+  ) {
+    initiatives.push(currentInitiative.metadata);
+  }
   if (!currentInitiative && forgeState.activeInitiative) {
     forgeState.activeInitiative = null;
     forgeState.lastUpdated = new Date().toISOString();
@@ -127,11 +190,10 @@ async function mainWorkflow(
     ctx.ui.setStatus("forge", "");
   }
 
-  // Inside Pi, show only the initiative rooted at the current working directory.
+  // Show every initiative; selecting one outside the current working directory
+  // switches the session into it.
   const quickTaskOption = "⚡ Continue as a quick task (no Forge record)";
-  const createNewOption = currentInitiative
-    ? "↗️ Switch initiative (exit Pi first)"
-    : "➕ Create persistent initiative";
+  const createNewOption = "➕ Create persistent initiative";
   const sortedInitiatives = [...initiatives].sort(
     (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
   );
@@ -150,13 +212,8 @@ async function mainWorkflow(
     return;
   }
 
-  // A running Pi process cannot switch to another initiative root.
   if (choice === createNewOption) {
-    if (currentInitiative) {
-      ctx.ui.notify("Exit Pi and run `forge` to choose another initiative.", "info");
-    } else {
-      await createInitiativeFlow(ctx, pi, forgeState);
-    }
+    await createInitiativeFlow(ctx, pi, forgeState);
     return;
   }
 
@@ -172,8 +229,8 @@ async function mainWorkflow(
     : join(INITIATIVES_DIR, selectedInitiative.name);
   const metadata = readJSON(join(initPath, ".forge", "metadata.json")) as InitiativeMetadata;
 
-  if (!currentInitiative && resolve(initPath) !== resolve(process.cwd())) {
-    notifyWorkspaceSwitch(ctx, selectedInitiative.name);
+  if (resolve(initPath) !== resolve(ctx.cwd)) {
+    await switchToInitiative(ctx, initPath, selectedInitiative.name);
     return;
   }
 
