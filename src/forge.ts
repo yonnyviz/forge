@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { ForgeFooterComponent } from "./forge-footer-component.js";
 const initiativeStore = require("./initiative-store.js");
 
 const {
@@ -70,6 +71,15 @@ export default function (pi: ExtensionAPI) {
     const currentInitiative = getCurrentInitiative(ctx.cwd);
     forgeState.activeInitiative = currentInitiative?.metadata.name || null;
     forgeState.lastUpdated = new Date().toISOString();
+
+    // Register custom minimal footer for TUI mode
+    if (ctx.mode === "tui") {
+      ctx.ui.setFooter((tui, theme, footerData) => {
+        return new ForgeFooterComponent(ctx, footerData, theme);
+      });
+    }
+
+    // Fallback status for non-TUI modes (RPC, print)
     if (currentInitiative) {
       ctx.ui.setStatus("forge", `🔨 ${currentInitiative.metadata.name}`);
     } else {
