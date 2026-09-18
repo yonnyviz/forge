@@ -9,6 +9,7 @@
     "forge": "./bin/forge.js"
   },
   "pi": {
-    "extensions": ["./src/forge.ts"]
+    "extensions": ["./src/forge.ts"],
+    "skills": ["./skills/forge"]
   }
 }
