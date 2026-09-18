@@ -256,3 +256,32 @@ test("rejects migration when legacy metadata is missing or malformed", () => {
     rmSync(malformedPath, { recursive: true, force: true });
   }
 });
+
+test("deleteInitiative removes a forge initiative and rejects invalid targets", () => {
+  const root = mkdtempSync(join(tmpdir(), "forge-delete-root-"));
+  const script = `
+    const assert = require("node:assert/strict");
+    const { existsSync, mkdirSync } = require("node:fs");
+    const { join } = require("node:path");
+    const store = require(${JSON.stringify(join(__dirname, "..", "src", "initiative-store.js"))});
+    const initPath = join(process.env.FORGE_INITIATIVES_DIR, "delete-me");
+    store.createWorkflowRecord(initPath, { name: "delete-me", displayName: "Delete Me", goal: "go" });
+    mkdirSync(join(initPath, "sessions", "2026-01-01_work"), { recursive: true });
+    const result = store.deleteInitiative("delete-me");
+    assert.equal(result.deletedSessions, 1);
+    assert.equal(existsSync(initPath), false);
+    assert.throws(() => store.deleteInitiative("delete-me"), /was not found/);
+    assert.throws(() => store.deleteInitiative("../escape"), /Invalid initiative name/);
+    assert.throws(() => store.deleteInitiative(""), /name is required/);
+    mkdirSync(join(process.env.FORGE_INITIATIVES_DIR, "plain-dir"), { recursive: true });
+    assert.throws(() => store.deleteInitiative("plain-dir"), /not a Forge initiative/);
+  `;
+  try {
+    require("node:child_process").execFileSync(process.execPath, ["-e", script], {
+      env: { ...process.env, FORGE_INITIATIVES_DIR: root },
+      stdio: "pipe",
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -1,6 +1,8 @@
 const {
   appendFileSync,
   existsSync,
+  rmSync,
+  statSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -47,6 +49,30 @@ function listInitiatives() {
     .map((entry) => join(INITIATIVES_DIR, entry.name, ".forge", "metadata.json"))
     .filter(existsSync)
     .map(readJSON);
+}
+
+function deleteInitiative(name) {
+  const initiativeName = typeof name === "string" ? name.trim() : "";
+  if (!initiativeName) throw new Error("An initiative name is required");
+  if (initiativeName !== toKebabCase(initiativeName)) {
+    throw new Error(`Invalid initiative name: '${initiativeName}'`);
+  }
+
+  const initPath = join(INITIATIVES_DIR, initiativeName);
+  const resolvedRelative = relative(INITIATIVES_DIR, initPath);
+  if (!resolvedRelative || resolvedRelative.startsWith("..") || resolvedRelative.includes(sep)) {
+    throw new Error(`Refusing to delete outside the initiatives directory: '${initiativeName}'`);
+  }
+  if (!existsSync(initPath) || !statSync(initPath).isDirectory()) {
+    throw new Error(`Initiative '${initiativeName}' was not found`);
+  }
+  if (!existsSync(join(initPath, ".forge"))) {
+    throw new Error(`'${initiativeName}' is not a Forge initiative (missing .forge)`);
+  }
+
+  const sessions = getRecentSessions(initPath);
+  rmSync(initPath, { recursive: true, force: true });
+  return { name: initiativeName, path: initPath, deletedSessions: sessions.length };
 }
 
 function getRecentSessions(initPath) {
@@ -879,6 +905,7 @@ module.exports = {
   readJSON,
   listInitiatives,
   getRecentSessions,
+  deleteInitiative,
   formatInitiativeLabel,
   formatInitiativeSummary,
   toKebabCase,

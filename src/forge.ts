@@ -7,6 +7,7 @@ import {
   applyLegacyMigration,
   createWorkSession,
   createWorkflowRecord,
+  deleteInitiative,
   ensureInitiativesDir,
   getRecentSessions,
   formatInitiativeLabel,
@@ -168,6 +169,61 @@ async function switchToInitiative(
   }
 }
 
+async function deleteInitiativeFlow(
+  ctx: ExtensionCommandContext,
+  initiatives: InitiativeMetadata[],
+  forgeState: ForgeState,
+  pi: ExtensionAPI
+) {
+  if (initiatives.length === 0) {
+    ctx.ui.notify("There are no initiatives to delete", "info");
+    return;
+  }
+
+  const options = initiatives.map((init) => formatInitiativeLabel(init, forgeState.activeInitiative));
+  const choice = await ctx.ui.select("🗑️ Select an initiative to delete:", options);
+  if (!choice) return;
+
+  const selectedIndex = options.indexOf(choice);
+  const initiative = initiatives[selectedIndex];
+  if (!initiative) return;
+
+  const initPath = join(INITIATIVES_DIR, initiative.name);
+  const sessions = getRecentSessions(initPath);
+
+  const confirmed = await ctx.ui.confirm(
+    `Delete '${initiative.name}'?`,
+    `Path: ${initPath}\nSessions: ${sessions.length}\n\nThis cannot be undone.`
+  );
+
+  if (!confirmed) {
+    ctx.ui.notify("Deletion cancelled", "info");
+    return;
+  }
+
+  try {
+    const result = deleteInitiative(initiative.name);
+    
+    // Clear state if deleting active initiative
+    if (forgeState.activeInitiative === initiative.name) {
+      forgeState.activeInitiative = null;
+      forgeState.lastUpdated = new Date().toISOString();
+      pi.appendEntry("forge-state", forgeState);
+      ctx.ui.setStatus("forge", "");
+    }
+    
+    ctx.ui.notify(
+      `✓ Deleted '${result.name}' (${result.deletedSessions} session(s))`,
+      "success"
+    );
+  } catch (error) {
+    ctx.ui.notify(
+      `Failed to delete: ${error instanceof Error ? error.message : String(error)}`,
+      "error"
+    );
+  }
+}
+
 async function mainWorkflow(
   ctx: ExtensionCommandContext,
   pi: ExtensionAPI,
@@ -194,12 +250,14 @@ async function mainWorkflow(
   // switches the session into it.
   const quickTaskOption = "⚡ Continue as a quick task (no Forge record)";
   const createNewOption = "➕ Create persistent initiative";
+  const deleteOption = "🗑️ Delete an initiative";
   const sortedInitiatives = [...initiatives].sort(
     (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
   );
   const initiativeOptions = [
     quickTaskOption,
     createNewOption,
+    deleteOption,
     ...sortedInitiatives.map((init) => formatInitiativeLabel(init, forgeState.activeInitiative)),
   ];
 
@@ -217,8 +275,13 @@ async function mainWorkflow(
     return;
   }
 
+  if (choice === deleteOption) {
+    await deleteInitiativeFlow(ctx, sortedInitiatives, forgeState, pi);
+    return;
+  }
+
   // Find the selected initiative without relying on decorative menu rows.
-  const selectedIndex = initiativeOptions.indexOf(choice) - 2;
+  const selectedIndex = initiativeOptions.indexOf(choice) - 3;
   const selectedInitiative = sortedInitiatives[selectedIndex];
 
   if (!selectedInitiative) return;

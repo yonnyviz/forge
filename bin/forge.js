@@ -11,6 +11,7 @@ const {
   applyLegacyMigration,
   createWorkflowRecord,
   createWorkSession,
+  deleteInitiative,
   ensureInitiativesDir,
   formatInitiativeLabel,
   formatInitiativeSummary,
@@ -140,6 +141,25 @@ async function launchNamedInitiative(initiativeName, sessionName, rl) {
   await launchPi(initiativePath, piArgs, rl);
 }
 
+async function confirmAndDelete(initiative, rl) {
+  const initiativePath = join(INITIATIVES_DIR, initiative.name);
+  const sessions = getRecentSessions(initiativePath);
+  stdout.write(`\n🗑️ About to permanently delete '${initiative.name}'\n`);
+  stdout.write(`   Path: ${initiativePath}\n`);
+  stdout.write(`   Sessions that will be removed: ${sessions.length}\n`);
+  stdout.write("   This cannot be undone.\n");
+
+  const answer = (await rl.question("Delete this initiative? [y/N]: ")).trim().toLowerCase();
+  if (answer !== "y" && answer !== "yes") {
+    stdout.write("Deletion cancelled.\n");
+    return false;
+  }
+
+  const result = deleteInitiative(initiative.name);
+  stdout.write(`✓ Deleted '${result.name}' (${result.deletedSessions} session(s))\n`);
+  return true;
+}
+
 async function main() {
   ensureInitiativesDir();
   const args = process.argv.slice(2);
@@ -177,8 +197,17 @@ async function main() {
       stdout.write(`✓ Migration complete. Metadata backup: ${result.backupPath}\n`);
       return;
     }
+    if (args[0] === "delete") {
+      if (!args[1] || args.length > 2) {
+        throw new Error("Usage: forge delete <initiative-name>");
+      }
+      const initiative = listInitiatives().find((item) => item.name === args[1]);
+      if (!initiative) throw new Error(`Initiative '${args[1]}' was not found`);
+      await confirmAndDelete(initiative, rl);
+      return;
+    }
     if (args.length > 0) {
-      throw new Error("Usage: forge [launch <initiative-name> [session-folder] | migrate <initiative-name> [--dry-run]]");
+      throw new Error("Usage: forge [launch <initiative-name> [session-folder] | delete <initiative-name> | migrate <initiative-name> [--dry-run]]");
     }
 
     const initiatives = listInitiatives().sort(
@@ -188,8 +217,9 @@ async function main() {
     stdout.write("\n🔨 Forge · Choose a workflow\n");
     stdout.write("1. ⚡ Start a quick task in the current directory\n");
     stdout.write("2. ➕ Create persistent initiative\n");
+    stdout.write("3. 🗑️ Delete an initiative\n");
     initiatives.forEach((initiative, index) => {
-      stdout.write(`${index + 3}. ${formatInitiativeLabel(initiative)}\n`);
+      stdout.write(`${index + 4}. ${formatInitiativeLabel(initiative)}\n`);
     });
 
     const selected = await rl.question("\nChoose a workflow: ");
@@ -201,11 +231,25 @@ async function main() {
       return;
     }
 
+    if (selection === 3) {
+      if (initiatives.length === 0) throw new Error("There are no initiatives to delete");
+      initiatives.forEach((item, index) => {
+        stdout.write(`${index + 1}. ${formatInitiativeLabel(item)}\n`);
+      });
+      const chosen = await rl.question("Select an initiative to delete: ");
+      const deleteIndex = Number.parseInt(chosen, 10) - 1;
+      if (!Number.isInteger(deleteIndex) || !initiatives[deleteIndex]) {
+        throw new Error("Choose a listed initiative number");
+      }
+      await confirmAndDelete(initiatives[deleteIndex], rl);
+      return;
+    }
+
     let initiative;
     if (selection === 2) {
       initiative = await createInitiativeFlow(rl);
     } else {
-      const index = selection - 3;
+      const index = selection - 4;
       if (!Number.isInteger(index) || !initiatives[index]) {
         throw new Error("Choose a listed workflow number");
       }
