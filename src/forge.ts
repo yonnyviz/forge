@@ -2,7 +2,6 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { ForgeFooterComponent } from "./forge-footer-component.js";
 const initiativeStore = require("./initiative-store.js");
 
 const {
@@ -70,20 +69,6 @@ export default function (pi: ExtensionAPI) {
     const currentInitiative = getCurrentInitiative(ctx.cwd);
     forgeState.activeInitiative = currentInitiative?.metadata.name || null;
     forgeState.lastUpdated = new Date().toISOString();
-
-    // Register custom minimal footer for TUI mode
-    if (ctx.mode === "tui") {
-      ctx.ui.setFooter((tui, theme, footerData) => {
-        return new ForgeFooterComponent(ctx, footerData, theme);
-      });
-    }
-
-    // Fallback status for non-TUI modes (RPC, print)
-    if (currentInitiative) {
-      ctx.ui.setStatus("forge", `🔨 ${currentInitiative.metadata.name}`);
-    } else {
-      ctx.ui.setStatus("forge", "");
-    }
   });
 
   // Single command: /forge
@@ -163,7 +148,6 @@ async function switchToInitiative(
 
     const { cancelled } = await ctx.switchSession(file, {
       withSession: async (next) => {
-        next.ui.setStatus("forge", `🔨 ${initiativeName}`);
         next.ui.notify(`🔨 Switched to ${initiativeName}\n${target}`, "success");
       },
     });
@@ -222,7 +206,6 @@ async function deleteInitiativeFlow(
       forgeState.activeInitiative = null;
       forgeState.lastUpdated = new Date().toISOString();
       pi.appendEntry("forge-state", forgeState);
-      ctx.ui.setStatus("forge", "");
     }
     
     ctx.ui.notify(
@@ -256,7 +239,6 @@ async function mainWorkflow(
     forgeState.activeInitiative = null;
     forgeState.lastUpdated = new Date().toISOString();
     pi.appendEntry("forge-state", forgeState);
-    ctx.ui.setStatus("forge", "");
   }
 
   // Show every initiative; selecting one outside the current working directory
@@ -314,7 +296,6 @@ async function mainWorkflow(
   forgeState.activeInitiative = selectedInitiative.name;
   forgeState.lastUpdated = new Date().toISOString();
   pi.appendEntry("forge-state", forgeState);
-  ctx.ui.setStatus("forge", `🔨 ${selectedInitiative.name}`);
 
   const recentSessions = getRecentSessions(initPath);
   ctx.ui.notify(
