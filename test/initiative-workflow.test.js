@@ -1,9 +1,9 @@
-const assert = require("node:assert/strict");
-const { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } = require("node:fs");
-const { tmpdir } = require("node:os");
-const { join } = require("node:path");
-const test = require("node:test");
-const {
+import assert from "node:assert/strict";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import {
   applyLegacyMigration,
   createForgeContextDocument,
   createWorkflowRecord,
@@ -14,7 +14,7 @@ const {
   updateWorkflowBrief,
   updateWorkflowMemory,
   validateWorkflowMetadata,
-} = require("../src/initiative-store.js");
+} from "../src/initiative-store.js";
 
 function temporaryInitiative() {
   return mkdtempSync(join(tmpdir(), "forge-workflow-"));
