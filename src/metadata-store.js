@@ -36,6 +36,7 @@ export function createMetadata(name, displayName, outcome) {
     questions: [],
     outputs: [],
     sessions: [],
+    memory: [],
   };
 }
 
@@ -160,6 +161,7 @@ export function validateMetadata(metadata) {
     "questions",
     "outputs",
     "sessions",
+    "memory",
   ];
 
   for (const field of requiredArrays) {

@@ -50,6 +50,7 @@ cat .forge/metadata.json
 - \`questions[]\` — open questions (open: true)
 - \`decisions[]\` — locked-in choices (read rationale)
 - \`progress[]\` — chronological work log (most recent first)
+- \`memory[]\` — important context to remember
 
 ---
 
@@ -145,6 +146,30 @@ All updates go directly to \`.forge/metadata.json\`. Use these patterns:
   "description": "Bcrypt password hashing utilities"
 }
 \`\`\`
+
+#### 🧠 **Memorize Important Context**
+
+\`\`\`javascript
+// Add to memory[] array when user says "memorize this" or similar
+{
+  "timestamp": new Date().toISOString(),
+  "entry": "User prefers PostgreSQL over MongoDB for this project",
+  "category": "preference"  // optional: preference, fact, tip, context
+}
+\`\`\`
+
+**Trigger patterns:**
+- "memorize this: X"
+- "remember that X"
+- "save this for later: X"
+- "important to note: X"
+- "keep in mind: X"
+
+**Categories:**
+- \`preference\` - user preferences, choices
+- \`fact\` - important facts about the project
+- \`tip\` - tips, best practices to remember
+- \`context\` - general context information
 
 #### ✓ **Complete a DoD Item**
 
@@ -246,6 +271,12 @@ When all \`definitionOfDone[]\` items have \`completed: true\`:
 **Open Questions:** ${openQuestions}  
 **Definition of Done:** ${completedDoD}/${totalDoD} complete  
 **Last Updated:** ${new Date(metadata.updated).toLocaleString()}
+
+${metadata.memory && metadata.memory.length > 0 ? `
+### 🧠 Remembered Context
+
+${metadata.memory.slice(0, 5).map(m => `- **${m.category || 'note'}:** ${m.entry}`).join('\n')}
+${metadata.memory.length > 5 ? `\n*...and ${metadata.memory.length - 5} more in metadata.json*` : ''}` : ''}
 
 ${metadata.completion ? `\n---\n\n## 🏁 Completion\n\n**Completed:** ${new Date(metadata.completion.completedAt).toLocaleString()}\n\n**Summary:** ${metadata.completion.summary}\n` : ""}
 

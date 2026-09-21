@@ -45,6 +45,12 @@ export interface Output {
   description?: string;
 }
 
+export interface MemoryEntry {
+  timestamp: string;
+  entry: string;
+  category?: "preference" | "fact" | "tip" | "context";
+}
+
 export interface Session {
   start: string;
   end?: string;
@@ -88,6 +94,9 @@ export interface Metadata {
   
   // Deliverables
   outputs: Output[];
+  
+  // Memory - important context to remember
+  memory: MemoryEntry[];
   
   // Sessions
   sessions: Session[];
