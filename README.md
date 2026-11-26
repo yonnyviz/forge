@@ -1,14 +1,89 @@
 # 🔨 Forge Extension
 
-The Forge extension manages initiatives and work sessions with structured metadata and tracking.
+Manage initiatives and work sessions inside Pi with structured metadata and tracking.
 
-## Installation
+## 📑 Contents
 
-Pi discovers this extension automatically via the git package system. No manual copying required.
+- [Quick Start](#-quick-start)
+- [`/forge` Command](#-forge-command)
+- [Installation](#-installation)
+- [How It Works](#-how-it-works)
+- [Configuration](#-configuration)
+- [File Structure](#-file-structure)
+- [Metadata Fields](#-metadata-fields)
+- [State Management](#-state-management)
 
-### 1. Add Git Package to Pi Settings
+---
 
-Edit `~/.pi/agent/settings.json` and add the Forge repository:
+## ⚡ Quick Start
+
+```bash
+# 1. Add the git package to Pi settings (~/.pi/agent/settings.json)
+{ "packages": ["git:github.com/yonnyviz/forge@main"] }
+
+# 2. Reload Pi
+/reload
+
+# 3. Run Forge
+/forge
+```
+
+---
+
+## 🚀 `/forge` Command
+
+Run `/forge` inside Pi to open the initiative management workflow.
+
+| Action | Description |
+|---|---|
+| ⚡ **Quick task** | Continue working without creating a Forge record |
+| ➕ **Create initiative** | Start a new persistent initiative |
+| 📂 **Manage current initiative** | View/manage the initiative rooted at the current Pi directory |
+| ▶️ **Resume session** | Pick up a recent session |
+| ⚙️ **Update status** | Change status: Active, Paused, Blocked, Completed |
+| 🗑️ **Delete initiative** | Permanently remove an initiative |
+
+### 📝 Common Workflows
+
+**Create an initiative**
+1. `/forge` → select persistent initiative creation
+2. Describe the goal → confirm the suggested kebab-case name
+3. Optionally switch to the new initiative immediately
+
+Creates: `.forge/metadata.json`, `.forge/sessions.log`, `AGENTS.md`, `brief.md`, `memory.md`, `outputs/`
+
+**Create a session**
+1. `/forge` → select an initiative
+2. Choose "➕ Start a new session"
+3. Enter session name (kebab-case), optionally name the Pi session
+4. Template created at `sessions/YYYY-MM-DD_name/notes.md`
+
+**Resume a session**
+1. `/forge` → select an initiative
+2. Choose "▶️ Resume a recent session"
+3. Select from recent sessions → notes preview is shown
+
+**Update status**
+1. `/forge` → select an initiative
+2. Choose "⚙️ Update initiative status"
+3. Set Active / Paused / Blocked / Completed + optional progress note
+
+**Migrate a legacy initiative**
+1. `/forge` → select a legacy initiative (one without `brief.md`/`memory.md`)
+2. Choose "🔄 Preview workflow migration"
+3. Review migration plan → confirm to apply
+
+Creates missing `brief.md`/`memory.md`/`outputs/`, upgrades metadata to schema v2, backs up old metadata as `.forge/metadata.pre-v2*.json`. Existing docs (README, `.claude.md`, roadmap, decisions, sessions, artifacts) are preserved. A conflicting `brief.md`/`memory.md` blocks migration instead of overwriting.
+
+---
+
+## 📦 Installation
+
+Pi discovers this extension automatically via the git package system — no manual copying required.
+
+### 1. Add the git package
+
+Edit `~/.pi/agent/settings.json` (create it if missing):
 
 ```json
 {
@@ -18,187 +93,192 @@ Edit `~/.pi/agent/settings.json` and add the Forge repository:
 }
 ```
 
-If the file doesn't exist, create it with the above content.
-
 ### 2. Reload Pi
 
-Inside Pi, run:
 ```
 /reload
 ```
 
-Pi will:
-- Fetch the Forge repository
-- Read `package.json` to find the extension entry point
-- Auto-discover and load `src/forge.ts`
-- Register the `/forge` command
+Pi will fetch the repo, read `package.json`, auto-load `src/forge.ts`, and register `/forge`.
 
-### 3. Set Initiatives Directory (Optional)
+### 3. (Optional) Set initiatives directory
 
-By default, initiatives are stored in `~/Documents/initiatives`. To use a different location:
+Default location: `~/Documents/initiatives`
 
 ```bash
-export FORGE_INITIATIVES_DIR=/path/to/your/initiatives
-```
-
-Add this to your shell profile (`.bashrc`, `.zshrc`, etc.) to persist across sessions:
-
-```bash
-# ~/.zshrc or ~/.bashrc
-export FORGE_INITIATIVES_DIR="$HOME/Documents/initiatives"
-```
-
-Or set it inline before running Pi:
-
-```bash
+export FORGE_INITIATIVES_DIR="$HOME/Documents/initiatives"   # add to ~/.zshrc or ~/.bashrc
+# or inline:
 FORGE_INITIATIVES_DIR=$HOME/my-initiatives pi
 ```
 
-### 4. Verify Installation
+### 4. Verify
 
-Run `/forge` to open the main workflow menu. If successful, you'll see the initiative selection prompt.
+Run `/forge` — you should see the initiative selection prompt.
 
 ---
 
-## Launch Pi for an Initiative
+## ⚙️ How It Works
 
-The Forge CLI is the recommended way to begin or resume work. It starts a **normal Pi process** in the selected initiative directory; it does not try to change the working directory of an already-running Pi process.
+Pi discovers extensions from:
+- **Auto-discovery:** `~/.pi/agent/extensions/` (global), `.pi/extensions/` (project-local)
+- **Git packages:** `git:` prefix in `settings.json`
+- **NPM packages:** `npm:` prefix
 
-Install the CLI separately from the Pi git package:
-
-```bash
-npm install -g git+https://github.com/yonnyviz/forge.git
-forge
-```
-
-For local development, run `npm link` in this repository once, then use `forge`.
-
-### Launcher flow
-
-1. `forge` lists initiatives from `FORGE_INITIATIVES_DIR`.
-2. You select an initiative.
-3. Forge lets you create a new work session or select an existing one.
-4. New sessions create `sessions/YYYY-MM-DD_name/notes.md`, update `.forge/metadata.json`, and get logged.
-5. Forge starts Pi in the initiative root with a deterministic display name: `initiative-name — YYYY-MM-DD_session-name` and a stable session ID.
-6. Selecting an existing session reopens the same Pi session instead of creating a duplicate.
-
-For example, `forge-implementation` and a Forge session folder named `2026-09-16_cli-launcher` produce the Pi session name `forge-implementation — 2026-09-16_cli-launcher`.
-
-The Forge CLI waits while Pi is open and returns when Pi exits. Set `FORGE_PI_BIN` to use a different Pi executable while testing, for example `FORGE_PI_BIN=/path/to/pi forge`.
-
-## How It Works
-
-Pi's extension discovery system finds extensions from:
-- **Auto-discovery locations:** `~/.pi/agent/extensions/` (global, project-local `.pi/extensions/`)
-- **Git packages:** Referenced in `settings.json` with `git:` prefix
-- **NPM packages:** Referenced with `npm:` prefix
-
-This extension uses the **git package** approach:
-1. `package.json` declares `pi.extensions` pointing to `./src/forge.ts`
+Forge uses the **git package** approach:
+1. `package.json` declares `pi.extensions` → `./src/forge.ts`
 2. Pi clones the repo and reads `package.json`
-3. The TypeScript extension auto-loads via jiti (no build step needed)
-4. Changes to the repo are picked up on next `/reload`
+3. The TypeScript extension auto-loads via jiti (no build step)
+4. Changes are picked up on the next `/reload`
 
-## Configuration
+---
 
-### Environment Variables
+## 🔧 Configuration
 
 | Variable | Default | Purpose |
-|----------|---------|----------|
+|---|---|---|
 | `FORGE_INITIATIVES_DIR` | `~/Documents/initiatives` | Root directory for all initiatives |
 
-### Examples
+```bash
+/forge                                          # default location
+export FORGE_INITIATIVES_DIR="$HOME/Projects/work" && pi   # custom location
+FORGE_INITIATIVES_DIR="$HOME/initiatives" pi     # inline
+```
+
+---
+
+## 🗂️ File Structure
+
+| Path | Purpose |
+|---|---|
+| `AGENTS.md` | **Pi context file:** workspace map, reading protocol, current state (auto-generated) |
+| `.forge/metadata.json` | Identity, status, timestamps, document pointers, agent resume index |
+| `brief.md` | Outcome, definition of done, scope, constraints, affected paths |
+| `memory.md` | Durable context, decisions, progress, open questions, next action |
+| `outputs/` | Useful handoff/delivery artifacts |
+| `sessions/YYYY-MM-DD_name/` | Optional session chronology and notes |
+
+**AGENTS.md** is automatically loaded by Pi from the current directory at startup, so any agent launched inside an initiative gets the workspace guide without needing to invoke `/forge`. The file is fenced by `<!-- forge:agents-guide start/end -->` markers; user-written prose outside those markers is preserved. Regenerate it via `/forge` → **📄 Refresh AGENTS.md**.
+
+Legacy initiatives may also contain `.claude.md`, `README.md`, planning files, and ADRs — these remain supported.
+
+---
+
+## 🏷️ Metadata Fields
+
+| Field | Values / Type |
+|---|---|
+| `status` | `active` \| `paused` \| `blocked` \| `completed` |
+| `phase` | `planning` \| `execution` \| `review` \| `complete` |
+| `sessionCount` | Total sessions created |
+| `lastSession` | ISO timestamp of most recent session |
+| `relatedInitiatives` | Array of related initiative names |
+
+---
+
+## 🔄 State Management
+
+The extension derives the active initiative from Pi's current working directory:
+
+- Status bar shows: `🔨 current-initiative-name`
+- A running Pi process cannot switch to another initiative root
+- Use `/forge` to switch sessions or manage different initiatives
+- Legacy session state is cleared when the current directory is not an initiative
+
+---
+
+## 📖 Session Workflow
+
+When you run `/forge`:
+
+1. **Initiative Selection**
+   - See all initiatives sorted by recent activity
+   - Current initiative (if in one) is marked with 🔨
+   - Choose an initiative or create a new one
+
+2. **Session Management**
+   - Start a new session or resume an existing one
+   - Sessions are timestamped: `YYYY-MM-DD_session-name`
+   - Each session gets a notes template
+
+3. **Context Integration**
+   - `AGENTS.md` auto-loads as Pi context
+   - Status bar shows active initiative
+   - Session history tracked in `.forge/sessions.log`
+
+4. **Session Switching**
+   - Select a different initiative to switch Pi's working directory
+   - Pi creates a fresh session in the new context
+   - Previous session state is preserved
+
+---
+
+## 🛠️ Development
+
+### Running Tests
 
 ```bash
-# Use default location
-/forge
+npm test
+```
 
-# Use custom location (set before starting Pi)
-export FORGE_INITIATIVES_DIR="$HOME/Projects/work"
+Tests cover:
+- Initiative creation and management
+- Workflow document validation
+- Legacy migration
+- Session tracking
+- Metadata integrity
+
+### Extension Structure
+
+```
+forge/
+├── src/
+│   ├── forge.ts              # Pi extension entry point
+│   └── initiative-store.js   # Core initiative logic
+├── skills/
+│   └── forge/                # Agent skill definitions
+├── test/
+│   └── initiative-workflow.test.js
+└── package.json              # Extension manifest
+```
+
+---
+
+## 📝 Migrating from CLI
+
+**Previous CLI users:** The standalone `forge` CLI has been removed. All functionality is now available through the `/forge` command in Pi.
+
+### Before (CLI removed in v0.1.0)
+```bash
+forge launch my-initiative
+```
+
+### Now (Pi Extension)
+```bash
 pi
-
-# Or inline
-FORGE_INITIATIVES_DIR="$HOME/initiatives" pi
-```
-
-## Usage
-
-### Start Forge
-```
 /forge
+# → Select initiative from menu
 ```
 
-This opens the main workflow menu with options to:
-- ➕ Create new initiative
-- Select an existing initiative
-- Resume sessions
-- Update status
+All initiative management now happens within Pi:
+- No separate CLI to install
+- Integrated session management
+- Native Pi context switching
+- Same features, better integration
 
-### Create Initiative
+---
 
-1. Run `/forge`
-2. Select "➕ Create new initiative"
-3. Enter kebab-case name (e.g., `my-project`)
-4. Provide display name, description, goal, and tags
-5. Optionally create your first session
+## 🤝 Contributing
 
-**Folder structure created:**
-```
-my-project/
-├── .forge/
-│   ├── metadata.json
-│   └── sessions.log
-├── sessions/
-├── planning/milestones/
-├── docs/
-├── artifacts/
-├── .claude.md
-└── README.md
-```
+This extension follows Pi's git package conventions. Changes are auto-loaded on `/reload`.
 
-### Create Session
+1. Fork and clone the repository
+2. Make your changes to `src/forge.ts` or `src/initiative-store.js`
+3. Run tests: `npm test`
+4. Update your `settings.json` to point to your fork
+5. Run `/reload` in Pi to test changes
 
-1. Select an initiative
-2. Choose "➕ Create new session"
-3. Enter session name (kebab-case)
-4. Optionally name your Pi session
-5. A `notes.md` template is created in `sessions/YYYY-MM-DD_name/`
+---
 
-> To launch a separate Pi instance rooted at the initiative directory, use the `forge` CLI described above.
+## 📄 License
 
-### Resume Session
-
-1. Select an initiative
-2. Choose "▶️ Resume session"
-3. Select from recent sessions
-4. Session notes preview is shown
-
-### Update Status
-
-1. Select an initiative
-2. Choose "⚙️ Update status"
-3. Change status: Active, Paused, Blocked, or Completed
-4. Add progress summary (optional)
-
-## File Structure
-
-- **`.forge/metadata.json`** - Initiative metadata (status, phase, owner, tags, session count)
-- **`.claude.md`** - Navigation and context for Claude
-- **`README.md`** - Public initiative overview
-- **`planning/ROADMAP.md`** - Milestone index and dependencies
-- **`docs/DECISIONS.md`** - Architecture decision records
-- **`sessions/YYYY-MM-DD_name/`** - Session work logs
-
-## Metadata Fields
-
-- `status`: active | paused | blocked | completed
-- `phase`: planning | execution | review | complete
-- `sessionCount`: Total sessions created
-- `lastSession`: ISO timestamp of most recent session
-- `relatedInitiatives`: Array of related initiative names
-
-## State Management
-
-The extension stores active initiative state in the Pi session, restored on session start:
-- Status bar displays: 🔨 active-initiative-name
-- State persists across Pi sessions
+MIT
